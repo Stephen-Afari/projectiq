@@ -151,6 +151,50 @@ projectsRouter.get(
 );
 
 projectsRouter.get(
+  '/:id/issues',
+  asyncHandler(async (req, res) => {
+    const id = requireId(req.params.id);
+    const project = await getProjectById(id);
+    if (!project) throw new ApiError(404, 'Project not found');
+    res.json(await listIssuesByProject(id));
+  }),
+);
+
+projectsRouter.get(
+  '/:id/dependencies',
+  asyncHandler(async (req, res) => {
+    const id = requireId(req.params.id);
+    const project = await getProjectById(id);
+    if (!project) throw new ApiError(404, 'Project not found');
+    res.json(await listDependenciesByProject(id));
+  }),
+);
+
+projectsRouter.get(
+  '/:id/change-signals',
+  asyncHandler(async (req, res) => {
+    const id = requireId(req.params.id);
+    const project = await getProjectById(id);
+    if (!project) throw new ApiError(404, 'Project not found');
+    res.json(await listChangeSignalsByProject(id));
+  }),
+);
+
+// Drill-down data source for the dashboard: unlike the endpoints above,
+// nothing here filters by approval_status — a PM browsing into a tile
+// should be able to see pending/rejected records too, not just what the
+// dashboard summary shows. Also backs "source meeting" resolution.
+projectsRouter.get(
+  '/:id/meetings',
+  asyncHandler(async (req, res) => {
+    const id = requireId(req.params.id);
+    const project = await getProjectById(id);
+    if (!project) throw new ApiError(404, 'Project not found');
+    res.json(await listMeetingsByProject(id));
+  }),
+);
+
+projectsRouter.get(
   '/:id/dashboard',
   asyncHandler(async (req, res) => {
     const id = requireId(req.params.id);

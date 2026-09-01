@@ -231,6 +231,24 @@ export function getProjectDashboard(projectId: string): Promise<ProjectDashboard
   return request<ProjectDashboard>(`/projects/${projectId}/dashboard`);
 }
 
+/** Drill-down record type — the URL path segment itself, no separate name-mapping layer needed. */
+export type RecordType =
+  | 'actions'
+  | 'risks'
+  | 'issues'
+  | 'decisions'
+  | 'dependencies'
+  | 'change-signals';
+
+/** Unfiltered project-scoped list — the drill-down data source (unlike the dashboard, includes non-approved rows). */
+export function getProjectRecords<T>(projectId: string, type: RecordType): Promise<T[]> {
+  return request<T[]>(`/projects/${projectId}/${type}`);
+}
+
+export function getProjectMeetings(projectId: string): Promise<Meeting[]> {
+  return request<Meeting[]>(`/projects/${projectId}/meetings`);
+}
+
 /** Maps a MeetingResults key to its API URL segment (change_signals -> change-signals). */
 export type ResourceKey =
   | 'actions'

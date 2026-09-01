@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import {
   ApiError,
   getProjectDashboard,
@@ -12,8 +12,10 @@ import {
   type Issue,
   type IntelligenceFeedItem,
   type ProjectDashboard as ProjectDashboardData,
+  type RecordType,
   type Risk,
 } from '../lib/api';
+import { SkeletonBlock, SkeletonCard, SkeletonStat } from '../components/Skeleton';
 
 const HEALTH_STYLES: Record<HealthLevel, string> = {
   green: 'bg-green-100 text-green-800 border-green-300',
@@ -45,6 +47,17 @@ const INTELLIGENCE_TYPE_LABELS: Record<IntelligenceFeedItem['type'], string> = {
   change_signal: 'Change Signal',
 };
 
+// Recent-intelligence items use the singular, underscore entity name; the
+// drill-down route uses the plural, kebab-case URL segment.
+const FEED_TYPE_TO_RECORD_TYPE: Record<IntelligenceFeedItem['type'], RecordType> = {
+  action: 'actions',
+  risk: 'risks',
+  issue: 'issues',
+  decision: 'decisions',
+  dependency: 'dependencies',
+  change_signal: 'change-signals',
+};
+
 function Badge({ text, className }: { text: string; className: string }) {
   return (
     <span
@@ -69,10 +82,26 @@ function ConfidenceBadge({ type }: { type: ConfidenceType | null }) {
   return <Badge text={type} className={CONFIDENCE_STYLES[type]} />;
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({
+  title,
+  linkTo,
+  children,
+}: {
+  title: string;
+  linkTo?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h3>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+        {linkTo ? (
+          <Link to={linkTo} className="hover:text-slate-700 hover:underline">
+            {title}
+          </Link>
+        ) : (
+          title
+        )}
+      </h3>
       <div className="mt-3">{children}</div>
     </div>
   );
@@ -154,18 +183,23 @@ function DecisionsList({ decisions }: { decisions: Decision[] }) {
 }
 
 function IssuesAndDependencies({
+  projectId,
   issues,
   dependencies,
 }: {
+  projectId: string;
   issues: Issue[];
   dependencies: Dependency[];
 }) {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+        <Link
+          to={`/projects/${projectId}/issues?view=open`}
+          className="text-xs font-medium uppercase tracking-wide text-slate-400 hover:text-slate-600 hover:underline"
+        >
           Open Issues ({issues.length})
-        </p>
+        </Link>
         {issues.length === 0 ? (
           <p className="mt-1 text-sm text-slate-400">None.</p>
         ) : (
@@ -180,9 +214,12 @@ function IssuesAndDependencies({
         )}
       </div>
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+        <Link
+          to={`/projects/${projectId}/dependencies?view=open`}
+          className="text-xs font-medium uppercase tracking-wide text-slate-400 hover:text-slate-600 hover:underline"
+        >
           Open Dependencies ({dependencies.length})
-        </p>
+        </Link>
         {dependencies.length === 0 ? (
           <p className="mt-1 text-sm text-slate-400">None.</p>
         ) : (
@@ -221,25 +258,69 @@ function ChangeSignalsList({ signals }: { signals: ChangeSignal[] }) {
   );
 }
 
-function IntelligenceFeed({ items }: { items: IntelligenceFeedItem[] }) {
+function IntelligenceFeed({ projectId, items }: { projectId: string; items: IntelligenceFeedItem[] }) {
   if (!items.length) return <EmptyState text="No recent activity." />;
   return (
     <ul className="divide-y divide-slate-100">
       {items.map((item) => (
-        <li key={`${item.type}-${item.id}`} className="flex items-start justify-between gap-3 py-2.5">
-          <div className="flex items-start gap-2">
-            <Badge text={INTELLIGENCE_TYPE_LABELS[item.type]} className="bg-slate-100 text-slate-600 border-slate-300" />
-            <p className="text-sm text-slate-800">{item.text}</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <ConfidenceBadge type={item.confidence_type} />
-            <span className="text-xs text-slate-400">
-              {new Date(item.created_at).toLocaleDateString()}
-            </span>
-          </div>
+        <li key={`${item.type}-${item.id}`}>
+          <Link
+            to={`/projects/${projectId}/${FEED_TYPE_TO_RECORD_TYPE[item.type]}`}
+            className="flex items-start justify-between gap-3 py-2.5 hover:bg-slate-50"
+          >
+            <div className="flex items-start gap-2">
+              <Badge
+                text={INTELLIGENCE_TYPE_LABELS[item.type]}
+                className="bg-slate-100 text-slate-600 border-slate-300"
+              />
+              <p className="text-sm text-slate-800">{item.text}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <ConfidenceBadge type={item.confidence_type} />
+              <span className="text-xs text-slate-400">
+                {new Date(item.created_at).toLocaleDateString()}
+              </span>
+            </div>
+          </Link>
         </li>
       ))}
     </ul>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="mx-auto max-w-5xl px-6 py-10">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <SkeletonBlock className="h-6 w-56" />
+          <SkeletonBlock className="h-4 w-40" />
+        </div>
+        <SkeletonBlock className="h-6 w-20" />
+      </div>
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <SkeletonStat />
+        <SkeletonStat />
+        <SkeletonStat />
+        <SkeletonStat />
+      </div>
+      <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <SkeletonStat />
+        <SkeletonStat />
+        <SkeletonStat />
+        <SkeletonStat />
+      </div>
+      <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+      <div className="mt-8">
+        <SkeletonCard lines={5} />
+      </div>
+    </div>
   );
 }
 
@@ -249,7 +330,7 @@ export default function ProjectDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!id) return;
     setLoading(true);
     setError(null);
@@ -259,17 +340,28 @@ export default function ProjectDashboard() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) {
-    return <div className="mx-auto max-w-5xl px-6 py-10 text-sm text-slate-500">Loading dashboard…</div>;
-  }
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (loading) return <DashboardSkeleton />;
+
   if (error) {
     return (
       <div className="mx-auto max-w-5xl px-6 py-10">
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p>{error}</p>
+          <button
+            onClick={load}
+            className="mt-2 rounded border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
-  if (!data) return null;
+  if (!data || !id) return null;
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-10">
@@ -313,26 +405,39 @@ export default function ProjectDashboard() {
       </section>
 
       <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title={`Overdue Actions (${data.overdue_actions.length})`}>
+        <Card
+          title={`Overdue Actions (${data.overdue_actions.length})`}
+          linkTo={`/projects/${id}/actions?view=overdue`}
+        >
           <OverdueActionsList actions={data.overdue_actions} />
         </Card>
-        <Card title={`Top Risks (${data.top_risks.length})`}>
+        <Card title={`Top Risks (${data.top_risks.length})`} linkTo={`/projects/${id}/risks?view=top`}>
           <TopRisksList risks={data.top_risks} />
         </Card>
-        <Card title={`Decisions Needing Attention (${data.decisions_needing_attention.length})`}>
+        <Card
+          title={`Decisions Needing Attention (${data.decisions_needing_attention.length})`}
+          linkTo={`/projects/${id}/decisions?view=pending`}
+        >
           <DecisionsList decisions={data.decisions_needing_attention} />
         </Card>
         <Card title="Issues & Dependencies">
-          <IssuesAndDependencies issues={data.open_issues} dependencies={data.open_dependencies} />
+          <IssuesAndDependencies
+            projectId={id}
+            issues={data.open_issues}
+            dependencies={data.open_dependencies}
+          />
         </Card>
-        <Card title={`Change Signals (${data.change_signals.length})`}>
+        <Card
+          title={`Change Signals (${data.change_signals.length})`}
+          linkTo={`/projects/${id}/change-signals?view=open`}
+        >
           <ChangeSignalsList signals={data.change_signals} />
         </Card>
       </div>
 
       <div className="mt-8">
         <Card title="Recent Project Intelligence">
-          <IntelligenceFeed items={data.recent_intelligence} />
+          <IntelligenceFeed projectId={id} items={data.recent_intelligence} />
         </Card>
       </div>
     </div>

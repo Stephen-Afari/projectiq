@@ -260,6 +260,14 @@ TypeScript across `frontend/` and `backend/`.
   (it's a live snapshot, not a report archive) — delivery is still via
   the Weekly Report n8n workflow's email step; this endpoint exists so the
   data is at least fetchable ahead of a future reports-archive UI.
+- `GET /api/projects/:id/issues`, `/dependencies`, `/change-signals`,
+  `/meetings` — the same "full unfiltered project list" pattern as the
+  pre-existing `/:id/actions`/`/:id/risks`/`/:id/decisions` (no
+  `approval_status` filter — unlike the dashboard, these are the drill-down
+  data source and deliberately include pending/rejected rows so a PM
+  browsing in isn't limited to what the summary tile showed). `/meetings`
+  additionally backs the drill-down screen's "source meeting" resolution
+  (`meeting_id` → title/date), fetched once rather than per-record.
 
 ## Ingestion Conventions
 - Meetings can be created two ways, sharing one service function
@@ -312,8 +320,23 @@ TypeScript across `frontend/` and `backend/`.
   exception already established by `/alerts` and the weekly report:
   "decisions needing attention" is inherently the *pending* category
   (decisions can't need approval-attention once they're approved).
-- See `docs/decision-log/2026-09-01-project-dashboard.md` for the full
-  design and live verification against Apex data.
+- **Drill-down is a separate, unfiltered data source, not the dashboard
+  endpoint with query params.** `GET /api/projects/:id/{actions|risks|
+  issues|decisions|dependencies|change-signals}` returns every row for
+  that project regardless of `approval_status` — clicking into a
+  dashboard tile should let a PM see pending/rejected records too, not
+  just the approved subset the summary showed. No server-side filtering
+  is implemented for these routes: the frontend fetches the full list
+  once per drill-down page load and filters entirely client-side
+  (`useMemo` over already-fetched data), so narrowing by
+  approval/status/owner/date-range is instant and never triggers a
+  network call. Do not add query-param filtering to these routes without
+  a real performance reason — it would duplicate logic that already lives
+  correctly on the frontend.
+- See `docs/decision-log/2026-09-01-project-dashboard.md` (initial build)
+  and `docs/decision-log/2026-09-03-dashboard-ux-filters-drilldown.md`
+  (states, filters, drill-down) for full design and live verification
+  against Apex data.
 
 ## Frontend Conventions
 - Routing: `react-router-dom`, added once a second screen actually existed
@@ -323,9 +346,39 @@ TypeScript across `frontend/` and `backend/`.
   `/meetings/:meetingId/results` (Meeting Results), `/projects` (Project
   List — the entry point into dashboards; reuses the existing
   `listProjects()` call already used by New Meeting's project picker),
-  `/projects/:id` (Project Dashboard). The header carries a small static
-  nav (`New Meeting` / `Projects`) — the first cross-screen navigation in
-  the app, added because nothing linked into `/projects/:id` otherwise.
+  `/projects/:id` (Project Dashboard), `/projects/:id/:type` (Project
+  Records — the drill-down list; `:type` is one of `actions|risks|issues|
+  decisions|dependencies|change-signals`, the same string as the API path
+  segment, so no separate name-mapping layer exists between the route and
+  the fetch call). The header carries a small static nav (`New Meeting` /
+  `Projects`) — the first cross-screen navigation in the app, added
+  because nothing linked into `/projects/:id` otherwise.
+- `frontend/src/components/` (new directory) — `Skeleton.tsx` exports
+  `SkeletonBlock`/`SkeletonCard`/`SkeletonStat`, shared by
+  `ProjectDashboard`/`ProjectRecords`/`ProjectList` (three consumers
+  crosses this codebase's own extraction threshold — the same reasoning
+  already used for `MeetingResults.tsx`'s shared `ItemCard`). Loading
+  states render shape-matched pulsing placeholders, not a spinner, so the
+  layout doesn't jump once data arrives. Error states across these three
+  screens follow one pattern: fetch logic lives in a `useCallback`'d
+  `load()` called from `useEffect` on mount and from a Retry button's
+  `onClick` — same function, two triggers, no duplicated fetch logic.
+- `frontend/src/pages/ProjectRecords.tsx` — the drill-down screen. Fetches
+  a project's full record list for one type plus `getProjectMeetings`
+  once per page load (`useEffect` on `[id, type]`); Approval/Status/
+  Owner/Date-range filters are `useMemo` array filters over that
+  already-fetched data — no network call on any filter change (see
+  Dashboard Conventions). A `?view=` query param seeds the *default*
+  filter selection (e.g. a tile for "decisions needing attention" links
+  with `?view=pending`) but never restricts what's fetched — the user can
+  always broaden the filters from there. Status/Owner filter options are
+  computed from the distinct values actually present in the fetched data,
+  not a hardcoded enum, so an option is never shown with zero matching
+  records. Each record card is read-only (no Approve/Reject/Edit — this
+  is a browsing/reporting screen, not the `MeetingResults.tsx` approval
+  workflow) and links its `meeting_id` to `/meetings/:id/results` as
+  "source meeting," or shows "No linked meeting" for the (currently rare)
+  case of a null `meeting_id`.
 - `frontend/src/pages/ProjectDashboard.tsx` follows `MeetingResults.tsx`'s
   established conventions: same loading/error/data state pattern, same
   card shell (`rounded-lg border bg-white p-4 shadow-sm border-slate-200`),

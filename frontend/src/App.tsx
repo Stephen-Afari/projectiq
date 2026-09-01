@@ -3,6 +3,7 @@ import NewMeeting from './pages/NewMeeting';
 import MeetingResults from './pages/MeetingResults';
 import ProjectList from './pages/ProjectList';
 import ProjectDashboard from './pages/ProjectDashboard';
+import ProjectRecords from './pages/ProjectRecords';
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
             <Route path="/meetings/:meetingId/results" element={<MeetingResults />} />
             <Route path="/projects" element={<ProjectList />} />
             <Route path="/projects/:id" element={<ProjectDashboard />} />
+            <Route path="/projects/:id/:type" element={<ProjectRecords />} />
           </Routes>
         </main>
       </div>
