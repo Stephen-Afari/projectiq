@@ -3,6 +3,23 @@ export interface Project {
   name: string;
 }
 
+export type HealthLevel = 'green' | 'amber' | 'red';
+
+export interface SubHealth {
+  schedule: HealthLevel;
+  budget: HealthLevel;
+  scope: HealthLevel;
+  resources: HealthLevel;
+}
+
+export interface IntelligenceFeedItem {
+  type: 'action' | 'risk' | 'issue' | 'decision' | 'dependency' | 'change_signal';
+  id: string;
+  text: string;
+  confidence_type: ConfidenceType | null;
+  created_at: string;
+}
+
 export interface Meeting {
   id: string;
   project_id: string;
@@ -73,6 +90,8 @@ export interface Risk extends EntityBase {
   status: string;
   context_flags: ContextFlags | null;
   impact_assessment: ImpactAssessment | null;
+  previous_severity: 'low' | 'medium' | 'high' | 'critical' | null;
+  severity_changed_at: string | null;
 }
 
 export interface Issue extends EntityBase {
@@ -116,6 +135,40 @@ export interface MeetingResults {
   decisions: Decision[];
   dependencies: Dependency[];
   change_signals: ChangeSignal[];
+}
+
+export interface ProjectDashboard {
+  project: {
+    id: string;
+    name: string;
+    status: string;
+    health: HealthLevel;
+    start_date: string | null;
+    target_date: string | null;
+  };
+  sub_health: SubHealth;
+  new_since_last_meeting: {
+    since: string | null;
+    actions: number;
+    risks: number;
+    decisions: number;
+    issues: number;
+  };
+  counts: {
+    actions: number;
+    risks: number;
+    issues: number;
+    decisions: number;
+    dependencies: number;
+    change_signals: number;
+  };
+  overdue_actions: Action[];
+  top_risks: Risk[];
+  decisions_needing_attention: Decision[];
+  open_issues: Issue[];
+  open_dependencies: Dependency[];
+  change_signals: ChangeSignal[];
+  recent_intelligence: IntelligenceFeedItem[];
 }
 
 export class ApiError extends Error {
@@ -172,6 +225,10 @@ export function analyseMeeting(meetingId: string): Promise<unknown> {
 
 export function getMeetingResults(meetingId: string): Promise<MeetingResults> {
   return request<MeetingResults>(`/meetings/${meetingId}/results`);
+}
+
+export function getProjectDashboard(projectId: string): Promise<ProjectDashboard> {
+  return request<ProjectDashboard>(`/projects/${projectId}/dashboard`);
 }
 
 /** Maps a MeetingResults key to its API URL segment (change_signals -> change-signals). */

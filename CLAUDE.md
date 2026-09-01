@@ -222,9 +222,27 @@ TypeScript across `frontend/` and `backend/`.
   see AI Rules). Unauthenticated like `/dashboard`/`/results` (read-only,
   same trust boundary as the frontend's other reads — not a webhook-
   ingestion endpoint). Includes `project.url` pointing at
-  `FRONTEND_BASE_URL/projects/:id`, which isn't a real page yet (no
-  project-detail screen exists — Dashboard is a later phase); the link is
-  intentionally forward-looking, not a bug.
+  `FRONTEND_BASE_URL/projects/:id` — now a real page (the Project
+  Dashboard, see Frontend Conventions and Dashboard Conventions below).
+- `GET /api/projects/:id/dashboard` — the Project Dashboard's data source.
+  Returns `project` (incl. the existing `health` column, unchanged),
+  `sub_health` (Schedule/Budget/Scope/Resources — see Dashboard
+  Conventions), `new_since_last_meeting` (approved actions/risks/
+  decisions/issues created at/after the project's most recent
+  `meeting_date`; `since: null` and all-zero counts if the project has no
+  meetings yet), `counts` (approved totals per entity type),
+  `overdue_actions`/`decisions_needing_attention` (reusing
+  `computeProjectAlerts`, same as `/alerts`), `top_risks` (approved,
+  severity-ranked, top 5), `open_issues`/`open_dependencies`/
+  `change_signals` (approved, status-filtered), and `recent_intelligence`
+  (approved items across all six entity types, merged and sorted by
+  `created_at`, top 15). Every list is approved-only **except**
+  `decisions_needing_attention`, which is deliberately the pending
+  category (same documented exception as `/alerts`). Built with
+  `Promise.all` over the existing `list*ByProject` helpers — no new
+  query-layer capability, same convention as `/alerts` and the weekly
+  report. This replaced the endpoint's earlier `counts.actions.by_status`-
+  style shape, which had zero frontend consumers before this.
 - `POST /api/ai/weekly-report` — runs the Executive Reporting Agent for one
   project (`{ project_id, week_start? }`, `week_start` defaults to 7 days
   before now). Gathers project data via the existing `list*ByProject`
@@ -238,10 +256,10 @@ TypeScript across `frontend/` and `backend/`.
   `502` (not persisted) if the agent fails validation after retries.
   Unauthenticated, same trust boundary as the rest of `/api/ai`.
 - `GET /api/projects/:id/reports` — lists persisted `weekly_reports` for a
-  project, oldest first. No dashboard page renders these yet (disclosed
-  limitation, same as the `/alerts` project-link) — delivery today is via
+  project, oldest first. The Project Dashboard does not render these
+  (it's a live snapshot, not a report archive) — delivery is still via
   the Weekly Report n8n workflow's email step; this endpoint exists so the
-  data is at least fetchable ahead of a future reports UI.
+  data is at least fetchable ahead of a future reports-archive UI.
 
 ## Ingestion Conventions
 - Meetings can be created two ways, sharing one service function
@@ -273,11 +291,53 @@ TypeScript across `frontend/` and `backend/`.
   meeting row still exists. Acceptable for MVP; revisit if this proves
   confusing in practice.
 
+## Dashboard Conventions
+- **Overall project health is the existing `projects.health` column** —
+  the dashboard displays it, never recomputes or overrides it. It's the
+  one health signal a human (or, later, an agent) has explicitly set.
+- **Sub-health (Schedule/Budget/Scope/Resources) is a deterministic score,
+  not a 5th AI agent.** `backend/src/lib/projectHealth.ts`
+  (`computeSubHealth`) reads only already-stored, **approved** data: each
+  category sums a weight per approved risk/dependency/change_signal whose
+  Impact Analyst `impact_assessment.applicable === true` and whose
+  matching field (`schedule_impact`/`cost_impact`/`scope_impact`/
+  `resource_impact`) is non-null — risks weighted by severity
+  (`critical=3, high=2, low/medium=1`), dependencies/change_signals a flat
+  `1` (no severity field). Schedule additionally adds
+  `min(overdueActionsCount, 3)`. Score → level: `0` green, `1–2` amber,
+  `>=3` red. A simple, explainable heuristic over data the Impact Analyst
+  already produced — adding a 5th agent to *judge* health at dashboard-
+  load time would violate the "four agents only" rule in AI Rules.
+- Every dashboard list is **approved-only**, with the one standing
+  exception already established by `/alerts` and the weekly report:
+  "decisions needing attention" is inherently the *pending* category
+  (decisions can't need approval-attention once they're approved).
+- See `docs/decision-log/2026-09-01-project-dashboard.md` for the full
+  design and live verification against Apex data.
+
 ## Frontend Conventions
 - Routing: `react-router-dom`, added once a second screen actually existed
   (New Meeting → Meeting Results) per the no-speculative-abstraction rule —
   not scaffolded ahead of need. Routes and `<BrowserRouter>` live in
-  `frontend/src/App.tsx`.
+  `frontend/src/App.tsx`. Current routes: `/` (New Meeting),
+  `/meetings/:meetingId/results` (Meeting Results), `/projects` (Project
+  List — the entry point into dashboards; reuses the existing
+  `listProjects()` call already used by New Meeting's project picker),
+  `/projects/:id` (Project Dashboard). The header carries a small static
+  nav (`New Meeting` / `Projects`) — the first cross-screen navigation in
+  the app, added because nothing linked into `/projects/:id` otherwise.
+- `frontend/src/pages/ProjectDashboard.tsx` follows `MeetingResults.tsx`'s
+  established conventions: same loading/error/data state pattern, same
+  card shell (`rounded-lg border bg-white p-4 shadow-sm border-slate-200`),
+  same badge shape (`rounded border px-1.5 py-0.5 text-[11px] font-medium
+  uppercase tracking-wide`). Local `HEALTH_STYLES`/`SEVERITY_STYLES`/
+  `CONFIDENCE_STYLES` color maps are colocated in the file, same pattern
+  as `CONFIDENCE_STYLES`/`StatusBadge` in `MeetingResults.tsx` — no
+  centralized theme tokens exist in `tailwind.config.js`, so semantic
+  color conventions live by usage in each screen. No charting library
+  added; health/severity render as colored badges and simple stat cells,
+  matching the codebase's existing plain-Tailwind restraint (confirmed
+  nothing else in the frontend uses one).
 - `frontend/src/lib/api.ts` is the only place that calls `fetch` — typed
   request/response shapes per resource, a shared `ApiError` thrown on any
   non-2xx (carrying the API's `{ message, details }`), and a
