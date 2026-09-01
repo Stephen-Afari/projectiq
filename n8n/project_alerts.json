@@ -1,0 +1,150 @@
+{
+  "name": "ProjectIQ - Project Alerts",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-80, 300],
+      "id": "schedule-trigger",
+      "name": "Daily 08:00"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.PROJECTIQ_API_BASE_URL}}/api/projects",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [140, 300],
+      "id": "http-get-projects",
+      "name": "Get Projects"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.PROJECTIQ_API_BASE_URL}}/api/projects/{{$json.id}}/alerts",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [360, 300],
+      "id": "http-get-alerts",
+      "name": "Get Alerts",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.item.json;\nconst overdue = data.overdue_actions ?? [];\nconst worsening = data.worsening_risks ?? [];\nconst pendingDecisions = data.pending_decisions ?? [];\nconst total = overdue.length + worsening.length + pendingDecisions.length;\n\nconst lines = [];\nif (overdue.length) {\n  lines.push(`Overdue actions (${overdue.length}):`);\n  for (const a of overdue) lines.push(`  - ${a.description} (owner: ${a.owner ?? 'unassigned'}, due ${a.due_date})`);\n}\nif (worsening.length) {\n  lines.push(`Risks that have worsened (${worsening.length}):`);\n  for (const r of worsening) lines.push(`  - ${r.description} (was ${r.previous_severity}, now ${r.severity})`);\n}\nif (pendingDecisions.length) {\n  lines.push(`Decisions awaiting approval (${pendingDecisions.length}):`);\n  for (const d of pendingDecisions) lines.push(`  - ${d.decision}`);\n}\n\nconst projectName = data.project?.name ?? 'Unknown project';\nconst projectUrl = data.project?.url ?? '';\nconst summaryText = `ProjectIQ Alert — ${projectName}\\n\\n${lines.join('\\n')}\\n\\nView project: ${projectUrl}`;\n\nreturn [{\n  json: {\n    project_id: data.project?.id,\n    project_name: projectName,\n    project_url: projectUrl,\n    has_alerts: total > 0,\n    total_count: total,\n    subject: `ProjectIQ Alert: ${total} item(s) need attention — ${projectName}`,\n    summary_text: summaryText,\n    overdue_actions: overdue,\n    worsening_risks: worsening,\n    pending_decisions: pendingDecisions,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [580, 300],
+      "id": "compile-alert",
+      "name": "Compile Alert"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-has-alerts",
+              "leftValue": "={{$json.has_alerts}}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [800, 300],
+      "id": "if-has-alerts",
+      "name": "Has Alerts?"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.ALERTS_FROM_EMAIL}}",
+        "toEmail": "={{$env.ALERTS_TO_EMAIL}}",
+        "subject": "={{$json.subject}}",
+        "text": "={{$json.summary_text}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1020, 200],
+      "id": "send-email",
+      "name": "Send Email",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.NOTIFICATION_WEBHOOK_URL}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { text: $json.summary_text } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1020, 400],
+      "id": "http-send-slack-placeholder",
+      "name": "Send Slack/Teams Notification (Placeholder)",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1020, 560],
+      "id": "no-alerts",
+      "name": "No Alerts"
+    }
+  ],
+  "connections": {
+    "Daily 08:00": {
+      "main": [[{ "node": "Get Projects", "type": "main", "index": 0 }]]
+    },
+    "Get Projects": {
+      "main": [[{ "node": "Get Alerts", "type": "main", "index": 0 }]]
+    },
+    "Get Alerts": {
+      "main": [[{ "node": "Compile Alert", "type": "main", "index": 0 }]]
+    },
+    "Compile Alert": {
+      "main": [[{ "node": "Has Alerts?", "type": "main", "index": 0 }]]
+    },
+    "Has Alerts?": {
+      "main": [
+        [
+          { "node": "Send Email", "type": "main", "index": 0 },
+          { "node": "Send Slack/Teams Notification (Placeholder)", "type": "main", "index": 0 }
+        ],
+        [{ "node": "No Alerts", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "projectiq-project-alerts"
+  }
+}

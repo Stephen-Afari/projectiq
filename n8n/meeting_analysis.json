@@ -1,0 +1,225 @@
+{
+  "name": "ProjectIQ - Meeting Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "meeting-analysis",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-80, 300],
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "webhookId": "meeting-analysis",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PLACEHOLDER_CREDENTIAL_ID",
+          "name": "ProjectIQ Webhook Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body ?? $input.item.json;\nconst meetingId = body.meeting_id;\nconst valid = typeof meetingId === 'string' && meetingId.trim().length > 0;\n\nreturn [{\n  json: {\n    meeting_id: meetingId,\n    force: body.force ?? false,\n    valid,\n    error: valid ? null : 'Missing or empty field: meeting_id',\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [140, 300],
+      "id": "validate-payload",
+      "name": "Validate Payload"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-valid",
+              "leftValue": "={{$json.valid}}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [360, 300],
+      "id": "if-payload-valid",
+      "name": "Payload Valid?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.PROJECTIQ_API_BASE_URL}}/api/ai/analyse-meeting",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { meeting_id: $json.meeting_id, force: $json.force } }}",
+        "options": {
+          "timeout": 180000
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 5000
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [580, 200],
+      "id": "http-call-analyse",
+      "name": "Call Analyse Meeting",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-analysis-succeeded",
+              "leftValue": "={{$json.counts}}",
+              "rightValue": "",
+              "operator": { "type": "object", "operation": "exists", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [800, 200],
+      "id": "if-analysis-succeeded",
+      "name": "Analysis Succeeded?"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: 'ok',\n    meeting_id: $json.meeting?.id ?? $('Validate Payload').item.json.meeting_id,\n    counts: $json.counts,\n    message: $json.status === 'already_analysed' ? 'Meeting was already analysed; returning existing results.' : 'Analysis complete.',\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1020, 100],
+      "id": "format-success-summary",
+      "name": "Format Success Summary"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": { "responseCode": 200 }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1240, 100],
+      "id": "respond-success",
+      "name": "Respond Success"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.NOTIFICATION_WEBHOOK_URL}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { text: `ProjectIQ analysis failed for meeting ${$('Validate Payload').item.json.meeting_id} after retries. Error: ${$json.error ?? 'unknown error'}` } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1020, 340],
+      "id": "http-send-notification",
+      "name": "Send Failure Notification",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.PROJECTIQ_API_BASE_URL}}/api/webhooks/n8n/meetings/{{$('Validate Payload').item.json.meeting_id}}/analysis-status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-N8N-Webhook-Secret", "value": "={{$env.N8N_WEBHOOK_SECRET}}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { status: 'failed', error: $('Call Analyse Meeting').item.json.error ?? 'Analysis failed after retries' } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1240, 340],
+      "id": "http-mark-failed",
+      "name": "Mark Meeting Failed",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: \"error\", meeting_id: $('Validate Payload').item.json.meeting_id, message: \"Analysis failed after retries; notification sent\" } }}",
+        "options": { "responseCode": 502 }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1460, 340],
+      "id": "respond-failure",
+      "name": "Respond Failure"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: \"error\", message: $json.error } }}",
+        "options": { "responseCode": 400 }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [360, 460],
+      "id": "respond-400",
+      "name": "Respond 400 - Invalid Payload"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Validate Payload", "type": "main", "index": 0 }]]
+    },
+    "Validate Payload": {
+      "main": [[{ "node": "Payload Valid?", "type": "main", "index": 0 }]]
+    },
+    "Payload Valid?": {
+      "main": [
+        [{ "node": "Call Analyse Meeting", "type": "main", "index": 0 }],
+        [{ "node": "Respond 400 - Invalid Payload", "type": "main", "index": 0 }]
+      ]
+    },
+    "Call Analyse Meeting": {
+      "main": [[{ "node": "Analysis Succeeded?", "type": "main", "index": 0 }]]
+    },
+    "Analysis Succeeded?": {
+      "main": [
+        [{ "node": "Format Success Summary", "type": "main", "index": 0 }],
+        [{ "node": "Send Failure Notification", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format Success Summary": {
+      "main": [[{ "node": "Respond Success", "type": "main", "index": 0 }]]
+    },
+    "Send Failure Notification": {
+      "main": [[{ "node": "Mark Meeting Failed", "type": "main", "index": 0 }]]
+    },
+    "Mark Meeting Failed": {
+      "main": [[{ "node": "Respond Failure", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "projectiq-meeting-analysis"
+  }
+}

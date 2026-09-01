@@ -1,0 +1,162 @@
+{
+  "name": "ProjectIQ - Weekly Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "weeksInterval": 1,
+              "triggerAtDay": [1],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-80, 300],
+      "id": "schedule-trigger",
+      "name": "Monday 08:00"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.PROJECTIQ_API_BASE_URL}}/api/projects",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [140, 300],
+      "id": "http-get-projects",
+      "name": "Get Projects"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.PROJECTIQ_API_BASE_URL}}/api/ai/weekly-report",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { project_id: $json.id } }}",
+        "options": {
+          "timeout": 180000
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [360, 300],
+      "id": "http-generate-report",
+      "name": "Generate Weekly Report",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-report-exists",
+              "leftValue": "={{$json.report}}",
+              "rightValue": "",
+              "operator": { "type": "object", "operation": "exists", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [580, 300],
+      "id": "if-report-generated",
+      "name": "Report Generated?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\nconst report = data.report;\nconst rj = report.report_json ?? {};\nconst projectName = data.project?.name ?? 'Unknown project';\n\nconst LABEL = { fact: 'FACT', inference: 'INFERENCE', recommendation: 'RECOMMENDATION' };\n\nfunction section(title, items) {\n  if (!items || !items.length) return `${title}:\\n  (none)`;\n  const lines = items.map((i) => `  - [${LABEL[i.confidence_type] ?? i.confidence_type}] ${i.text}`);\n  return `${title}:\\n${lines.join('\\n')}`;\n}\n\nconst sections = [\n  section('Status', rj.status_narrative),\n  section('Key Risks', rj.key_risks),\n  section('Decisions Needed', rj.decisions_needed),\n  section('Escalations', rj.escalations),\n  section('Management Attention', rj.management_attention_items),\n];\n\nconst textBody = `ProjectIQ Weekly Report — ${projectName}\\nPeriod: ${report.week_start} to ${report.week_end}\\n\\n${sections.join('\\n\\n')}`;\nconst htmlBody = `<h2>ProjectIQ Weekly Report — ${projectName}</h2><p>Period: ${report.week_start} to ${report.week_end}</p>` +\n  sections.map((s) => `<pre>${s}</pre>`).join('');\n\nreturn [{\n  json: {\n    project_name: projectName,\n    subject: `ProjectIQ Weekly Report — ${projectName}`,\n    text_body: textBody,\n    html_body: htmlBody,\n    report_id: report.id,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 200],
+      "id": "format-report-email",
+      "name": "Format Report Email"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.ALERTS_FROM_EMAIL}}",
+        "toEmail": "={{$env.ALERTS_TO_EMAIL}}",
+        "subject": "={{$json.subject}}",
+        "text": "={{$json.text_body}}",
+        "html": "={{$json.html_body}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1020, 100],
+      "id": "send-email",
+      "name": "Send Email",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.PDF_GENERATION_WEBHOOK_URL}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { subject: $json.subject, html: $json.html_body } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1020, 300],
+      "id": "http-attach-pdf-placeholder",
+      "name": "Attach PDF (Placeholder — not a real PDF service)",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [800, 460],
+      "id": "no-report",
+      "name": "No Report (Agent Failed)"
+    }
+  ],
+  "connections": {
+    "Monday 08:00": {
+      "main": [[{ "node": "Get Projects", "type": "main", "index": 0 }]]
+    },
+    "Get Projects": {
+      "main": [[{ "node": "Generate Weekly Report", "type": "main", "index": 0 }]]
+    },
+    "Generate Weekly Report": {
+      "main": [[{ "node": "Report Generated?", "type": "main", "index": 0 }]]
+    },
+    "Report Generated?": {
+      "main": [
+        [{ "node": "Format Report Email", "type": "main", "index": 0 }],
+        [{ "node": "No Report (Agent Failed)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format Report Email": {
+      "main": [
+        [
+          { "node": "Send Email", "type": "main", "index": 0 },
+          { "node": "Attach PDF (Placeholder — not a real PDF service)", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "projectiq-weekly-report"
+  }
+}

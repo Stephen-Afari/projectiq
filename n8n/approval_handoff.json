@@ -1,0 +1,123 @@
+{
+  "name": "ProjectIQ - Approval Hand-off",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "approval-handoff",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-80, 300],
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "webhookId": "approval-handoff",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PLACEHOLDER_CREDENTIAL_ID",
+          "name": "ProjectIQ Webhook Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body ?? $input.item.json;\nconst resourceType = body.resource_type;\nconst record = body.record ?? {};\nconst isApproved = record.approval_status === 'approved';\n\n// Defense in depth: the backend only ever emits this event when\n// approval_status just became 'approved' (see backend/src/db/queryTable.ts\n// updateApprovalStatus), but this workflow still checks for itself rather\n// than trusting the caller blindly — never act on pending/rejected items,\n// at either layer.\nreturn [{\n  json: {\n    resource_type: resourceType,\n    record,\n    is_approved: isApproved,\n    summary: `[${resourceType}] ${record.description ?? record.decision ?? record.id} — approved by ${record.approved_by} at ${record.approved_at}`,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [140, 300],
+      "id": "validate-log-event",
+      "name": "Validate & Log Event"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-is-approved",
+              "leftValue": "={{$json.is_approved}}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [360, 300],
+      "id": "if-is-approved",
+      "name": "Is Approved?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.NOTIFICATION_WEBHOOK_URL}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { text: `ProjectIQ: item ready for downstream action. ${$json.summary}\\n\\n(Placeholder — real Planner/Jira push lands in Phase 9. This is a log/notify step only.)` } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [580, 200],
+      "id": "http-notify-placeholder",
+      "name": "Notify Downstream (Placeholder)",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: \"ok\", resource_type: $json.resource_type, id: $json.record.id, message: \"Recorded as ready for downstream action.\" } }}",
+        "options": { "responseCode": 200 }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [800, 200],
+      "id": "respond-success",
+      "name": "Respond Success"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: \"ignored\", resource_type: $json.resource_type, id: $json.record.id, message: \"Not an approval event — ignored.\" } }}",
+        "options": { "responseCode": 200 }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [580, 420],
+      "id": "respond-ignored",
+      "name": "Respond Ignored"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Validate & Log Event", "type": "main", "index": 0 }]]
+    },
+    "Validate & Log Event": {
+      "main": [[{ "node": "Is Approved?", "type": "main", "index": 0 }]]
+    },
+    "Is Approved?": {
+      "main": [
+        [{ "node": "Notify Downstream (Placeholder)", "type": "main", "index": 0 }],
+        [{ "node": "Respond Ignored", "type": "main", "index": 0 }]
+      ]
+    },
+    "Notify Downstream (Placeholder)": {
+      "main": [[{ "node": "Respond Success", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "projectiq-approval-handoff"
+  }
+}

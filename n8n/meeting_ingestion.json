@@ -1,0 +1,252 @@
+{
+  "name": "ProjectIQ - Meeting Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "meeting-ingestion",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-80, 300],
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "webhookId": "meeting-ingestion",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PLACEHOLDER_CREDENTIAL_ID",
+          "name": "ProjectIQ Webhook Secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body ?? $input.item.json;\nconst required = ['project_id', 'title', 'meeting_date', 'transcript'];\nconst missing = required.filter((k) => !body[k] || (typeof body[k] === 'string' && body[k].trim() === ''));\n\nreturn [{\n  json: {\n    project_id: body.project_id,\n    title: body.title,\n    meeting_date: body.meeting_date,\n    source: body.source ?? 'n8n',\n    transcript: body.transcript,\n    valid: missing.length === 0,\n    error: missing.length ? `Missing or empty field(s): ${missing.join(', ')}` : null,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [140, 300],
+      "id": "validate-payload",
+      "name": "Validate Payload"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-valid",
+              "leftValue": "={{$json.valid}}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [360, 300],
+      "id": "if-payload-valid",
+      "name": "Payload Valid?"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.PROJECTIQ_API_BASE_URL}}/api/projects/{{$json.project_id}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [580, 200],
+      "id": "http-get-project",
+      "name": "Get Project",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-project-found",
+              "leftValue": "={{$json.id}}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "exists", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [800, 200],
+      "id": "if-project-found",
+      "name": "Project Found?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.PROJECTIQ_API_BASE_URL}}/api/webhooks/n8n/meetings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-N8N-Webhook-Secret", "value": "={{$env.N8N_WEBHOOK_SECRET}}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { project_id: $('Validate Payload').item.json.project_id, title: $('Validate Payload').item.json.title, meeting_date: $('Validate Payload').item.json.meeting_date, source: $('Validate Payload').item.json.source, transcript: $('Validate Payload').item.json.transcript } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1020, 200],
+      "id": "http-create-meeting",
+      "name": "Create Meeting",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-meeting-created",
+              "leftValue": "={{$json.id}}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "exists", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1240, 200],
+      "id": "if-meeting-created",
+      "name": "Meeting Created?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: \"ok\", meeting_id: $json.id, message: \"Meeting stored, analysis triggered\" } }}",
+        "options": { "responseCode": 200 }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1460, 100],
+      "id": "respond-success",
+      "name": "Respond Success"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.N8N_BASE_URL}}/webhook/meeting-analysis",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-N8N-Webhook-Secret", "value": "={{$env.N8N_WEBHOOK_SECRET}}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { meeting_id: $('Create Meeting').item.json.id } }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1680, 100],
+      "id": "http-trigger-analysis",
+      "name": "Trigger Analysis",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: \"error\", message: $json.error } }}",
+        "options": { "responseCode": 400 }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [580, 460],
+      "id": "respond-400",
+      "name": "Respond 400 - Invalid Payload"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: \"error\", message: \"Project not found\", project_id: $('Validate Payload').item.json.project_id } }}",
+        "options": { "responseCode": 404 }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [800, 460],
+      "id": "respond-404",
+      "name": "Respond 404 - Project Not Found"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: \"error\", message: \"Failed to create meeting\" } }}",
+        "options": { "responseCode": 502 }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1240, 460],
+      "id": "respond-502",
+      "name": "Respond 502 - Meeting Creation Failed"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Validate Payload", "type": "main", "index": 0 }]]
+    },
+    "Validate Payload": {
+      "main": [[{ "node": "Payload Valid?", "type": "main", "index": 0 }]]
+    },
+    "Payload Valid?": {
+      "main": [
+        [{ "node": "Get Project", "type": "main", "index": 0 }],
+        [{ "node": "Respond 400 - Invalid Payload", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get Project": {
+      "main": [[{ "node": "Project Found?", "type": "main", "index": 0 }]]
+    },
+    "Project Found?": {
+      "main": [
+        [{ "node": "Create Meeting", "type": "main", "index": 0 }],
+        [{ "node": "Respond 404 - Project Not Found", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Meeting": {
+      "main": [[{ "node": "Meeting Created?", "type": "main", "index": 0 }]]
+    },
+    "Meeting Created?": {
+      "main": [
+        [{ "node": "Respond Success", "type": "main", "index": 0 }],
+        [{ "node": "Respond 502 - Meeting Creation Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Respond Success": {
+      "main": [[{ "node": "Trigger Analysis", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "projectiq-meeting-ingestion"
+  }
+}
