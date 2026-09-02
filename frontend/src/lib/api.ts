@@ -249,6 +249,32 @@ export function getProjectMeetings(projectId: string): Promise<Meeting[]> {
   return request<Meeting[]>(`/projects/${projectId}/meetings`);
 }
 
+export interface QueryCitation {
+  type: 'action' | 'risk' | 'issue' | 'decision' | 'dependency' | 'change_signal' | 'meeting';
+  id: string;
+  label: string;
+}
+
+export interface QueryAnswerPoint {
+  text: string;
+  confidence_type: ConfidenceType;
+  citations: QueryCitation[];
+}
+
+export interface ProjectQueryResponse {
+  project: { id: string; name: string };
+  question: string;
+  answer: QueryAnswerPoint[];
+  data_gap: string | null;
+}
+
+export function queryProject(projectId: string, question: string): Promise<ProjectQueryResponse> {
+  return request<ProjectQueryResponse>('/ai/project-query', {
+    method: 'POST',
+    body: JSON.stringify({ project_id: projectId, question }),
+  });
+}
+
 /** Maps a MeetingResults key to its API URL segment (change_signals -> change-signals). */
 export type ResourceKey =
   | 'actions'

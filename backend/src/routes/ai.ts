@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validateBody } from '../middleware/validateBody.js';
-import { analyseMeetingSchema, weeklyReportSchema } from '../schemas/ai.js';
+import { analyseMeetingSchema, projectQuerySchema, weeklyReportSchema } from '../schemas/ai.js';
 import { ApiError } from '../lib/ApiError.js';
 import { computeProjectAlerts } from '../lib/projectAlerts.js';
+import { computeSubHealth } from '../lib/projectHealth.js';
+import { getMostRecentMeetingDate } from '../lib/projectMeetings.js';
 import {
   createAction,
   createAgentRun,
@@ -27,6 +29,7 @@ import {
   listDependenciesByProject,
   listChangeSignalsByMeeting,
   listChangeSignalsByProject,
+  listMeetingsByProject,
   updateMeetingAnalysisStatus,
   updateMeetingSummary,
 } from '../db/index.js';
@@ -34,6 +37,8 @@ import { downloadTranscript } from '../services/transcriptStorage.js';
 import { runMeetingAnalysisPipeline } from '../agents/pipeline.js';
 import { runExecutiveReportingAgent } from '../agents/executive-reporting/index.js';
 import type { WeeklyReportInput } from '../agents/executive-reporting/index.js';
+import { runProjectAssistant } from '../agents/project-assistant/index.js';
+import type { ProjectAssistantInput, QueryAnswerPoint } from '../agents/project-assistant/index.js';
 
 export const aiRouter = Router();
 
@@ -328,8 +333,116 @@ aiRouter.post(
   }),
 );
 
-aiRouter.post('/project-query', (_req, res) => {
-  res.status(501).json({
-    error: { message: 'Not implemented — Q&A over project data ships in Phase 7' },
-  });
-});
+aiRouter.post(
+  '/project-query',
+  validateBody(projectQuerySchema),
+  asyncHandler(async (req, res) => {
+    const { project_id, question } = req.body;
+
+    const project = await getProjectById(project_id);
+    if (!project) throw new ApiError(404, 'Project not found');
+
+    const [actions, risks, issues, decisions, dependencies, changeSignals, meetings] =
+      await Promise.all([
+        listActionsByProject(project_id),
+        listRisksByProject(project_id),
+        listIssuesByProject(project_id),
+        listDecisionsByProject(project_id),
+        listDependenciesByProject(project_id),
+        listChangeSignalsByProject(project_id),
+        listMeetingsByProject(project_id),
+      ]);
+
+    const isApproved = <T extends { approval_status: string }>(item: T) =>
+      item.approval_status === 'approved';
+
+    const approvedActions = actions.filter(isApproved);
+    const approvedRisks = risks.filter(isApproved);
+    const approvedIssues = issues.filter(isApproved);
+    const approvedDependencies = dependencies.filter(isApproved);
+    const approvedChangeSignals = changeSignals.filter(isApproved);
+
+    // Same "what needs attention" logic as GET /:id/alerts, the weekly
+    // report, and the dashboard — shared helper so none of them drift.
+    const { overdueActions, worseningRisks, pendingDecisions } = computeProjectAlerts(
+      approvedActions,
+      approvedRisks,
+      decisions,
+    );
+
+    const subHealth = computeSubHealth(
+      approvedRisks,
+      approvedDependencies,
+      approvedChangeSignals,
+      overdueActions.length,
+    );
+
+    const sinceLastMeeting = getMostRecentMeetingDate(meetings);
+
+    // The set of every id handed to the model, keyed by claimed type —
+    // used below to drop any hallucinated citation before responding.
+    // Decisions include pending ones (the one deliberate exception, same
+    // as everywhere else), everything else is approved-only.
+    const knownIds: Record<string, Set<string>> = {
+      action: new Set(approvedActions.map((a) => a.id)),
+      risk: new Set(approvedRisks.map((r) => r.id)),
+      issue: new Set(approvedIssues.map((i) => i.id)),
+      decision: new Set(decisions.map((d) => d.id)),
+      dependency: new Set(approvedDependencies.map((d) => d.id)),
+      change_signal: new Set(approvedChangeSignals.map((c) => c.id)),
+      meeting: new Set(meetings.map((m) => m.id)),
+    };
+
+    const agentInput: ProjectAssistantInput = {
+      project,
+      subHealth,
+      question,
+      sinceLastMeeting,
+      meetings,
+      actions: approvedActions,
+      risks: approvedRisks,
+      issues: approvedIssues,
+      dependencies: approvedDependencies,
+      changeSignals: approvedChangeSignals,
+      decisions,
+      overdueActions,
+      worseningRisks,
+      pendingDecisions,
+    };
+
+    const run = await runProjectAssistant(agentInput);
+
+    await createAgentRun({
+      agent_name: 'project-assistant',
+      project_id,
+      model: run.model,
+      prompt_version: run.promptVersion,
+      input_refs: { question, since_last_meeting: sinceLastMeeting },
+      raw_output: run.rawOutput,
+      validation_passed: run.validationPassed,
+      error_message: run.errorMessage,
+    });
+
+    if (!run.validationPassed || !run.result) {
+      const errorMessage =
+        run.errorMessage ?? 'Project Assistant could not produce a valid answer after retries';
+      throw new ApiError(502, errorMessage);
+    }
+
+    // Defensive re-validation: drop any citation whose id doesn't match a
+    // real record of its claimed type — same pattern as the Context
+    // Analyst's duplicate_of_id re-validation. Never trust an id the
+    // model reports back to us.
+    const answer: QueryAnswerPoint[] = run.result.answer.map((point) => ({
+      ...point,
+      citations: point.citations.filter((c) => knownIds[c.type]?.has(c.id) ?? false),
+    }));
+
+    res.status(200).json({
+      project: { id: project.id, name: project.name },
+      question,
+      answer,
+      data_gap: run.result.data_gap,
+    });
+  }),
+);

@@ -15,9 +15,12 @@ a clean end-to-end demo story over feature breadth.
   Analyst, dedup/relationship flags) → Agent 3 (Impact Analyst, schedule/
   cost/scope/resource/dependency assessment) → **single** persistence step,
   storing enriched items pending → human review/approval → live records →
-  Q&A (RAG) → Agent 4 (Executive Reporting, scheduled). Note: Impact
-  Analyst runs pre-approval, on every newly extracted item — not only on
-  already-approved changes as originally sketched in the Phase 1 plan; see
+  Project Assistant Q&A (`POST /api/ai/project-query` — structured
+  retrieval over already-approved records; vector/RAG search over
+  uploaded documents is a later phase, not this) → Agent 4 (Executive
+  Reporting, scheduled). Note: Impact Analyst runs pre-approval, on every
+  newly extracted item — not only on already-approved changes as
+  originally sketched in the Phase 1 plan; see
   `docs/decision-log/2026-08-25-context-and-impact-agents.md` for why
   (assessing impact before a human decides is more useful than after).
 - All AI agent code lives server-side in `backend/src/agents/*`. The frontend
@@ -182,7 +185,20 @@ TypeScript across `frontend/` and `backend/`.
     the review screen needed them (their `db/tables/*.ts` CRUD functions
     existed from Phase 2 but were never wired up).
 - AI endpoints: `POST /api/ai/analyse-meeting` (real), `POST
-  /api/ai/project-query` — still `501` (Phase 7).
+  /api/ai/weekly-report` (real), `POST /api/ai/project-query` (real —
+  Project Assistant Q&A; see AI Rules). All unauthenticated, same trust
+  boundary as the rest of `/api/ai`.
+- `POST /api/ai/project-query` — `{ project_id, question }` → `{ project,
+  question, answer: [{ text, confidence_type, citations }], data_gap }`.
+  Gathers the project's approved actions/risks/issues/dependencies/
+  change_signals, **all** decisions (pending + approved — the standing
+  exception), meetings, and precomputed `computeProjectAlerts`/
+  `computeSubHealth` output, then runs the Project Assistant agent (see AI
+  Rules) against that snapshot. `200` (not `201` — nothing is persisted;
+  logged to `agent_runs` only, per AI Rules' auditability requirement).
+  `502` if the agent fails validation after retries. Every citation is
+  re-validated against the actual ids handed to the model before the
+  response is sent — see AI Rules.
 - `GET /api/users` — unscoped list, same placeholder rationale as `GET
   /api/projects`: no auth/org session on the frontend yet. Backs the
   review screen's "Reviewing as" picker, standing in for real
@@ -379,6 +395,34 @@ TypeScript across `frontend/` and `backend/`.
   workflow) and links its `meeting_id` to `/meetings/:id/results` as
   "source meeting," or shows "No linked meeting" for the (currently rare)
   case of a null `meeting_id`.
+- `frontend/src/components/AskProjectIQ.tsx` — the "Ask ProjectIQ" chat
+  panel, rendered on `ProjectDashboard.tsx` via `<AskProjectIQ key={id}
+  projectId={id} />` right below the health header. Lives in
+  `components/` despite having one consumer today — that directory's
+  usual justification is `Skeleton.tsx`'s three-consumer reuse threshold,
+  but this one is a ~200-line self-contained chat widget extracted purely
+  for file-size/readability, a different (and separately valid) reason,
+  stated here so it doesn't read as a silent exception to the reuse rule.
+  Conversation state (`{role:'user'|'assistant'|'error', ...}[]`) lives
+  entirely in the component, reset for free by the `key={id}` remount
+  when the user navigates to a different project — "keep a short
+  conversation history in the session" means this page load, not
+  anything persisted; the backend itself is stateless (see AI Rules).
+  Suggested-question chips **ask immediately on click** rather than just
+  filling the input, and stay visible above the input throughout the
+  conversation (not just when empty), so switching to a different canned
+  question is always one click. Every citation (`{type, id, label}` from
+  the backend) renders as a linked pill: non-`meeting` types map through
+  a local `CITATION_TYPE_TO_RECORD_TYPE` (same shape as
+  `ProjectDashboard.tsx`'s `FEED_TYPE_TO_RECORD_TYPE`) into the
+  `ProjectRecords.tsx` drill-down route; `meeting` citations link to
+  `/meetings/:id/results` — no new destination screens were needed.
+  `data_gap` renders as its own amber callout (same convention as
+  `MeetingResults.tsx`'s "no material impact" Impact Analyst callout),
+  visually distinct from the answer's confidence-typed statement list, so
+  a guardrail message never reads as just one more bullet point. Errors
+  render as a message *in* the conversation (not a page-level banner),
+  with a "Try again" button that resends the exact failed question.
 - `frontend/src/pages/ProjectDashboard.tsx` follows `MeetingResults.tsx`'s
   established conventions: same loading/error/data state pattern, same
   card shell (`rounded-lg border bg-white p-4 shadow-sm border-slate-200`),
@@ -412,12 +456,21 @@ TypeScript across `frontend/` and `backend/`.
   no separate manual "run analysis" step in the UI.
 
 ## AI Rules
-- Four agents only, each with one job: Meeting Analyst (extraction),
-  Project Context Analyst (comparison/dedup/relationship/change-signal
-  detection), Project Impact Analyst (schedule/cost/scope/resource/dependency
-  impact assessment), Executive Reporting Agent (weekly summaries). No
-  open-ended/general-purpose agent, no agent given tools beyond what its job
-  requires.
+- Four *extraction/reporting* agents only, each with one job: Meeting
+  Analyst (extraction), Project Context Analyst (comparison/dedup/
+  relationship/change-signal detection), Project Impact Analyst (schedule/
+  cost/scope/resource/dependency impact assessment), Executive Reporting
+  Agent (weekly summaries). No open-ended/general-purpose agent among
+  these four, no agent given tools beyond what its job requires. **The
+  Project Assistant** (`backend/src/agents/project-assistant/`, `POST
+  /api/ai/project-query`) **is a fifth, distinct capability, not a
+  violation of this rule** — it was always anticipated as its own stage in
+  the Architecture pipeline ("Q&A" between "live records" and the
+  Executive Reporting Agent), not one of the four write-side agents. It
+  stays narrow enough to justify being separate rather than "general
+  purpose": no tools, no writes, no side effects, answers grounded *only*
+  in one project's already-retrieved, mostly-approved data — it cannot do
+  anything beyond answer a question from what's already in the database.
 - Every AI-generated claim is tagged FACT, INFERENCE, or RECOMMENDATION.
   FACT = directly stated/verifiable in the source transcript/record.
   INFERENCE = the agent's derived judgement, not explicitly stated.
@@ -514,6 +567,33 @@ TypeScript across `frontend/` and `backend/`.
   data outside what the route hands it, and produces its own report; it
   triggers no downstream write or approval-state change itself. See
   `docs/decision-log/2026-08-30-executive-reporting-agent-weekly-report.md`.
+- **Project Assistant (`backend/src/agents/project-assistant/`) answers
+  natural-language questions grounded in structured retrieval, not RAG.**
+  `POST /api/ai/project-query` always gathers the same
+  comprehensive-but-bounded snapshot of one project's approved data (plus
+  all decisions, pending + approved) rather than trying to classify which
+  subset a question needs — same "fetch full list(s), let the agent work
+  with what's relevant" convention as the dashboard and weekly report.
+  Vector/RAG search over uploaded documents is explicitly out of scope
+  here (a later phase); this is SQL-list retrieval only.
+  - **Output is an array of `{ text, confidence_type, citations }`
+    statements plus a required `data_gap` field** (`string | null`) — not
+    free prose. `data_gap` is the hallucination guard: the schema forces
+    the model to either answer from the given data or say what's missing,
+    every time, rather than hoping it volunteers a caveat in prose.
+  - **Citations are defensively re-validated before the response is
+    sent** — every citation's `id` is checked against the actual set of
+    ids handed to the model (built while gathering data); any citation
+    referencing an id that doesn't exist for its claimed type is dropped
+    (just that citation, not the whole statement) — the exact same
+    defense-in-depth pattern already used for the Context Analyst's
+    `duplicate_of_id` (CLAUDE.md above: "a hallucinated id gets nulled
+    out, the qualitative flag is kept").
+  - Stateless: logged to `agent_runs` for auditability like every other
+    agent invocation, but not persisted to its own table — an answer
+    isn't a generated artifact meant to be browsed later, unlike a weekly
+    report.
+  - See `docs/decision-log/2026-09-05-ai-project-assistant.md`.
 
 ## Testing Rules
 - Every zod schema has unit tests covering valid and invalid shapes.

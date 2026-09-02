@@ -7,6 +7,7 @@ import { requireId } from '../lib/requireId.js';
 import { config } from '../config.js';
 import { computeProjectAlerts } from '../lib/projectAlerts.js';
 import { computeSubHealth } from '../lib/projectHealth.js';
+import { getMostRecentMeetingDate } from '../lib/projectMeetings.js';
 import type { Action, ChangeSignal, Decision, Dependency, Issue, Risk } from '../db/types.js';
 import {
   createProject,
@@ -224,10 +225,7 @@ projectsRouter.get(
     // "New since last meeting" — the project's most recent meeting_date is
     // the cutoff. No meetings yet → since is null, counts are 0 (disclosed
     // simplification, not silently wrong).
-    const lastMeeting = meetings
-      .slice()
-      .sort((a, b) => (a.meeting_date < b.meeting_date ? 1 : -1))[0];
-    const since = lastMeeting?.meeting_date ?? null;
+    const since = getMostRecentMeetingDate(meetings);
     const isNewSinceLastMeeting = (createdAt: string) => since !== null && createdAt >= since;
     const newSinceLastMeeting = {
       since,

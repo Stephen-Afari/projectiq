@@ -14,3 +14,8 @@ export const weeklyReportSchema = z.object({
   // scheduled caller (n8n) doesn't need to compute it itself.
   week_start: z.string().min(1).optional(),
 });
+
+export const projectQuerySchema = z.object({
+  project_id: z.string().uuid(),
+  question: z.string().min(1),
+});

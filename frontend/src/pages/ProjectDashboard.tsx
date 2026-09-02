@@ -16,6 +16,7 @@ import {
   type Risk,
 } from '../lib/api';
 import { SkeletonBlock, SkeletonCard, SkeletonStat } from '../components/Skeleton';
+import AskProjectIQ from '../components/AskProjectIQ';
 
 const HEALTH_STYLES: Record<HealthLevel, string> = {
   green: 'bg-green-100 text-green-800 border-green-300',
@@ -385,6 +386,10 @@ export default function ProjectDashboard() {
         <SubHealthCard label="Budget" level={data.sub_health.budget} />
         <SubHealthCard label="Scope" level={data.sub_health.scope} />
         <SubHealthCard label="Resources" level={data.sub_health.resources} />
+      </div>
+
+      <div className="mt-8">
+        <AskProjectIQ key={id} projectId={id} />
       </div>
 
       <section className="mt-8">
