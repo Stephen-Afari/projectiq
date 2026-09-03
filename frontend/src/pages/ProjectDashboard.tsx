@@ -17,6 +17,7 @@ import {
 } from '../lib/api';
 import { SkeletonBlock, SkeletonCard, SkeletonStat } from '../components/Skeleton';
 import AskProjectIQ from '../components/AskProjectIQ';
+import DocumentUpload from '../components/DocumentUpload';
 
 const HEALTH_STYLES: Record<HealthLevel, string> = {
   green: 'bg-green-100 text-green-800 border-green-300',
@@ -386,6 +387,10 @@ export default function ProjectDashboard() {
         <SubHealthCard label="Budget" level={data.sub_health.budget} />
         <SubHealthCard label="Scope" level={data.sub_health.scope} />
         <SubHealthCard label="Resources" level={data.sub_health.resources} />
+      </div>
+
+      <div className="mt-8">
+        <DocumentUpload key={id} projectId={id} />
       </div>
 
       <div className="mt-8">

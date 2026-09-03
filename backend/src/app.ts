@@ -12,6 +12,7 @@ import { dependenciesRouter } from './routes/dependencies.js';
 import { changeSignalsRouter } from './routes/changeSignals.js';
 import { usersRouter } from './routes/users.js';
 import { aiRouter } from './routes/ai.js';
+import { documentsRouter } from './routes/documents.js';
 import { webhooksRouter } from './routes/webhooks.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requireAuth } from './middleware/requireAuth.js';
@@ -51,6 +52,7 @@ app.use('/api/dependencies', requireAuth, dependenciesRouter);
 app.use('/api/change-signals', requireAuth, changeSignalsRouter);
 app.use('/api/users', requireAuth, usersRouter);
 app.use('/api/ai', requireAuth, aiRateLimit, aiRouter);
+app.use('/api/documents', requireAuth, documentsRouter);
 app.use('/api/webhooks', webhooksRouter);
 
 app.use(errorHandler);

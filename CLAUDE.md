@@ -16,8 +16,10 @@ a clean end-to-end demo story over feature breadth.
   cost/scope/resource/dependency assessment) → **single** persistence step,
   storing enriched items pending → human review/approval → live records →
   Project Assistant Q&A (`POST /api/ai/project-query` — structured
-  retrieval over already-approved records; vector/RAG search over
-  uploaded documents is a later phase, not this) → Agent 4 (Executive
+  retrieval over already-approved records, now combined with a top-k
+  pgvector similarity search over the project's uploaded-document chunks
+  — see RAG Document Ingestion Conventions and RAG Retrieval Conventions)
+  → Agent 4 (Executive
   Reporting, scheduled). Note: Impact Analyst runs pre-approval, on every
   newly extracted item — not only on already-approved changes as
   originally sketched in the Phase 1 plan; see
@@ -34,7 +36,10 @@ a clean end-to-end demo story over feature breadth.
 ## Tech Stack
 React + Vite + Tailwind · Node.js + Express · Supabase/Postgres + pgvector ·
 n8n · Claude API (Anthropic SDK) as primary model, OpenRouter as an optional
-dev-time provider behind the same interface · zod for schema validation ·
+dev-time provider behind the same interface · `@xenova/transformers`
+(local, in-process) for document embeddings — see RAG Document Ingestion
+Conventions · `pdf-parse`/`mammoth` for PDF/DOCX text extraction ·
+`multer` for the one multipart upload route · zod for schema validation ·
 TypeScript across `frontend/` and `backend/`.
 
 ## Coding Conventions
@@ -175,8 +180,28 @@ implemented, not aspiration.
   every dev environment; use the Session Pooler connection string, which is
   IPv4-reachable). Verify with `npm run db:verify`.
 - Embeddings (pgvector) are derived data — always regenerable from source
-  records/transcripts, never the source of truth themselves. Not yet
-  migrated — added when the RAG Q&A phase needs them.
+  records/transcripts, never the source of truth themselves. `vector`
+  extension enabled since the very first migration; `project_chunks`
+  (added 2026-09-05) is the first table to actually use it — see RAG
+  Document Ingestion Conventions below. Structured entities (actions,
+  risks, etc.) still have no embeddings — only uploaded documents do.
+- `documents` gained ingestion-status columns (2026-09-05), mirroring
+  `meetings.analysis_status` exactly: `ingestion_status`
+  (`document_ingestion_status` enum: `pending`/`processing`/`completed`/
+  `failed`, default `pending`), `ingestion_error text`. Plus `mime_type
+  text`, `size_bytes bigint`, `uploaded_by uuid references users(id)`.
+  `document_type` (pre-existing, free text) holds the upload category
+  (charter, RAID register, etc.) — frontend offers suggested values, not
+  DB-enforced.
+- `project_chunks` — one row per chunk of an uploaded document's
+  extracted text, with its embedding. `id, project_id, document_id,
+  chunk_index, content, section (nullable), embedding vector(384),
+  created_at`. Not an AI-extracted entity (no `approval_status`/
+  `confidence_type`) — derived data from a document, not a claim an agent
+  made. RLS-isolated by `project_id` like every other project-scoped
+  table. No similarity index yet (deferred to the retrieval phase that
+  actually queries it — building one on an empty table now would be badly
+  tuned). See RAG Document Ingestion Conventions below.
 - `context_flags jsonb` (nullable) on `actions`/`risks`/`decisions` and
   `impact_assessment jsonb` (nullable) on `risks`/`dependencies`/
   `change_signals` — written by the Context Analyst and Impact Analyst
@@ -340,6 +365,9 @@ implemented, not aspiration.
   (it's a live snapshot, not a report archive) — delivery is still via
   the Weekly Report n8n workflow's email step; this endpoint exists so the
   data is at least fetchable ahead of a future reports-archive UI.
+- `POST /api/documents` — multipart upload + synchronous ingestion
+  (extract/chunk/embed/store). `GET /api/projects/:id/documents` — list.
+  See RAG Document Ingestion Conventions.
 - `GET /api/projects/:id/issues`, `/dependencies`, `/change-signals`,
   `/meetings` — the same "full unfiltered project list" pattern as the
   pre-existing `/:id/actions`/`/:id/risks`/`/:id/decisions` (no
@@ -379,6 +407,115 @@ implemented, not aspiration.
   `meetings` row is created, the API returns `502` but the (transcript-less)
   meeting row still exists. Acceptable for MVP; revisit if this proves
   confusing in practice.
+
+## RAG Document Ingestion Conventions
+Ingestion (upload → extract → chunk → embed → store) — see
+`docs/decision-log/2026-09-05-rag-document-ingestion.md`. Retrieval into
+the Project Assistant is documented separately below (RAG Retrieval
+Conventions), added 2026-09-07 — see
+`docs/decision-log/2026-09-07-rag-retrieval-in-assistant.md`.
+- **Embeddings run locally, not via a hosted API.**
+  `backend/src/services/embeddings/` (`types.ts`'s `EmbeddingClient`,
+  `localClient.ts`, `index.ts` factory keyed off `config.embeddingProvider`)
+  mirrors `services/llm/`'s exact shape — a separate interface from
+  `LlmClient`, not a method bolted onto it, because Anthropic has no
+  embeddings endpoint at all. Default (only) provider: `@xenova/
+  transformers` running `Xenova/all-MiniLM-L6-v2` in-process — 384
+  dimensions, no API key, no network call per request, zero marginal
+  cost. A hosted provider (OpenAI/Voyage) can be added behind this same
+  interface later if quality/scale needs it — not built speculatively
+  now, same restraint already applied to `LLM_PROVIDER`'s `openrouter`
+  stub.
+- **Text extraction is format-dispatched** (`backend/src/services/
+  textExtraction.ts`, `extractText(buffer, filename)`): `pdf-parse` for
+  `.pdf` (real per-page text, tagged `section: "Page N"`), `mammoth` for
+  `.docx` (`section: null` — DOCX has no reliable page/section boundary
+  without full rendering, disclosed not guessed), direct UTF-8 read for
+  `.txt`, and Markdown-heading-based sectioning for `.md` (`section` =
+  nearest preceding `#`/`##`/etc. heading text).
+- **Chunking is a pure function** (`backend/src/services/chunking.ts`,
+  `chunkSections`/`chunkText`) — paragraph-aware character sliding
+  window, `config.chunkSize` (default 1000 chars) with `config.
+  chunkOverlap` (default 150 chars) carried into the next chunk, an
+  oversized single paragraph hard-split as a fallback. Character-based,
+  not token-based, to avoid a tokenizer dependency for a first pass. Each
+  extracted section is chunked independently, so no chunk crosses a
+  page/heading boundary.
+- **The whole pipeline runs synchronously in the upload request** —
+  extract → chunk → embed → bulk-insert `project_chunks` → mark the
+  `documents` row `completed` (or `failed` + `ingestion_error`, row still
+  exists) — matching `POST /api/ai/analyse-meeting`'s existing
+  synchronous-pipeline convention; no job queue in this MVP.
+  `backend/src/services/documentIngestion.ts`'s `ingestDocument()` is the
+  orchestrator, mirroring `meetingIngestion.ts`'s shape.
+- **Route split matches the rest of the API**: `POST /api/documents`
+  (flat, `multipart/form-data`, `project_id` as a form field — same shape
+  as `POST /api/actions`/`/api/risks`, not nested under `/projects/:id/`)
+  uses `multer` (memory storage, `config.maxDocumentSizeBytes` limit —
+  the only multipart-handling route in the app, everything else is JSON).
+  `GET /api/projects/:id/documents` (list) joins `projects.ts`'s existing
+  `loadProjectInOrg`-gated read routes.
+- Raw file bytes go to a private Storage bucket, `documents` (provisioned
+  by `npm run setup:storage`, mirroring `transcripts`), at
+  `<project_id>/<document_id>/<original_filename>`.
+- `frontend/src/lib/api.ts`'s `uploadDocument()` is the one deliberate
+  exception to `request()`'s JSON-only convention — it builds a
+  `FormData` body and omits `Content-Type` entirely so the browser sets
+  the multipart boundary; every other API call stays JSON.
+
+## RAG Retrieval Conventions
+`POST /api/ai/project-query` grounds answers in both structured records
+(unchanged) and now the project's uploaded documents. See
+`docs/decision-log/2026-09-07-rag-retrieval-in-assistant.md`.
+- **Similarity search runs through a Postgres RPC, not the Supabase JS
+  query builder** — pgvector's `<=>` operator isn't reachable through
+  `.order()`/`.filter()`. `match_project_chunks(query_embedding,
+  match_project_id, match_count)` (migration
+  `20260907090000_match_project_chunks.sql`) joins `project_chunks` to
+  `documents` in one query (so the result already carries
+  `filename`/`document_type`) and filters `project_id` *inside* the SQL
+  function itself, not left to the caller — a mis-scoped call can't leak
+  another project's chunks. Called via a new generic `queryTable.ts`
+  helper, `callRpc<T>(fn, params)`.
+- **Top-k + a similarity threshold, not top-k alone.**
+  `backend/src/services/retrieval.ts`'s `retrieveRelevantChunks(projectId,
+  question)` embeds the question with the same local `embeddingClient`
+  used for ingestion, fetches `config.retrievalTopK` (default 8) nearest
+  chunks, then drops anything below `config.retrievalMinSimilarity`
+  (default `0.3`). Nearest-neighbor search alone always returns k results
+  even when nothing is actually relevant — the threshold is what makes
+  "the documents don't cover this" a real, distinguishable outcome for
+  the agent rather than always having *something* to (mis)cite.
+- **Citation schema gained a `document` type.**
+  `agents/project-assistant/schema.ts`'s `queryCitationSchema.type` now
+  includes `'document'`; for that type, `id` is the **document's** id
+  (not a chunk id — a citation should point at something a user can
+  recognize and revisit), and the (optional, document-only) `section`
+  field carries the page/heading. A hallucinated document citation is
+  dropped the same way a hallucinated entity citation already is — the
+  existing post-hoc `knownIds` re-validation in `routes/ai.ts` gained a
+  `document` entry built from the actual retrieved chunks' document ids.
+- **The prompt treats "no relevant passages" as meaningful, not silent.**
+  `prompt.ts`'s user prompt lists every retrieved (post-threshold)
+  passage under "Project documents (retrieved passages)"; the system
+  prompt instructs that an empty or irrelevant list, for a
+  document-shaped question, must produce a `data_gap` explaining that —
+  never a fallback to general/training knowledge. Verified live: asking
+  about an SOP (a document type never uploaded) correctly produced
+  `data_gap` explaining no SOP was found, rather than inventing one.
+- **The response returns the retrieved passages, not just final
+  citations** — `sources` in the `POST /api/ai/project-query` response is
+  the full threshold-passed chunk list (id, document_id, filename,
+  section, content, similarity). The frontend resolves "click a citation
+  → show the source passage" by matching a document citation's
+  `id`+`section` against `sources`, entirely client-side — no extra
+  round trip, no new backend route.
+- **Frontend**: `AskProjectIQ.tsx`'s citation pills split by type — entity
+  citations still link to the existing drill-down/meeting screens
+  unchanged; a `type === 'document'` citation is a button that toggles an
+  inline expandable block (filename, section, full passage text) beneath
+  the answer, since no document-viewer page exists (out of scope for this
+  phase — the chat panel is the only place a source passage is shown).
 
 ## Dashboard Conventions
 - **Overall project health is the existing `projects.health` column** —
@@ -643,14 +780,18 @@ implemented, not aspiration.
   triggers no downstream write or approval-state change itself. See
   `docs/decision-log/2026-08-30-executive-reporting-agent-weekly-report.md`.
 - **Project Assistant (`backend/src/agents/project-assistant/`) answers
-  natural-language questions grounded in structured retrieval, not RAG.**
-  `POST /api/ai/project-query` always gathers the same
-  comprehensive-but-bounded snapshot of one project's approved data (plus
-  all decisions, pending + approved) rather than trying to classify which
-  subset a question needs — same "fetch full list(s), let the agent work
-  with what's relevant" convention as the dashboard and weekly report.
-  Vector/RAG search over uploaded documents is explicitly out of scope
-  here (a later phase); this is SQL-list retrieval only.
+  natural-language questions grounded in both structured retrieval and
+  RAG document retrieval.** `POST /api/ai/project-query` always gathers
+  the same comprehensive-but-bounded snapshot of one project's approved
+  data (plus all decisions, pending + approved) rather than trying to
+  classify which subset a question needs — same "fetch full list(s), let
+  the agent work with what's relevant" convention as the dashboard and
+  weekly report — **and, since 2026-09-07, also runs a top-k pgvector
+  similarity search over the project's uploaded-document chunks** (see
+  RAG Retrieval Conventions above) and passes the relevant passages in
+  alongside the structured data. Both sources ground the same answer;
+  document-derived claims cite `type: 'document'`, structured-record
+  claims cite the entity type, per the same citation mechanism.
   - **Output is an array of `{ text, confidence_type, citations }`
     statements plus a required `data_gap` field** (`string | null`) — not
     free prose. `data_gap` is the hallucination guard: the schema forces

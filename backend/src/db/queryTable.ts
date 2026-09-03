@@ -36,6 +36,25 @@ export async function insertRow<T>(table: string, input: Record<string, unknown>
   return data as T;
 }
 
+/** Bulk variant of insertRow — one round trip for N rows (e.g. a document's chunks). */
+export async function insertRows<T>(table: string, inputs: Record<string, unknown>[]): Promise<T[]> {
+  if (inputs.length === 0) return [];
+  const { data, error } = await supabase.from(table).insert(inputs).select();
+  if (error) throw new Error(`[db] ${table}.insertRows failed: ${error.message}`);
+  return (data ?? []) as T[];
+}
+
+/**
+ * Calls a Postgres function via PostgREST's RPC endpoint — needed for
+ * queries the fluent .from()/.select() builder can't express, e.g.
+ * pgvector's `<=>` similarity ordering (see match_project_chunks).
+ */
+export async function callRpc<T>(fn: string, params: Record<string, unknown>): Promise<T[]> {
+  const { data, error } = await supabase.rpc(fn, params);
+  if (error) throw new Error(`[db] rpc.${fn} failed: ${error.message}`);
+  return (data ?? []) as T[];
+}
+
 export async function updateRow<T>(
   table: string,
   id: string,

@@ -28,6 +28,19 @@ Rules, no exceptions:
   "no risks are currently open"). Never invent an id.
 - Answer the question asked. Don't pad with unrelated sections.
 
+Project documents (retrieved passages):
+- These are the passages from the project's uploaded documents (charter, RAID register, contracts,
+  etc.) that were found most relevant to this specific question. They may be empty — retrieval
+  found nothing relevant, not that no documents exist.
+- A claim grounded in a passage must cite { type: "document", id: <that passage's document id>,
+  label: <the document's filename>, section: <that passage's section, if given> }.
+- If the retrieved-passages list is empty, or none of the passages actually answer the question,
+  and the question is clearly asking about something a project document would cover (e.g. "what
+  does the charter say about X", "what's in the RAID register about Y"), say so explicitly in
+  data_gap — e.g. "No uploaded document passage addresses this." Do not answer from general
+  knowledge or guess at what a typical charter/register might say — only what's actually in the
+  passages below.
+
 Data vocabulary, so you interpret the fields correctly:
 - "worsening" / "increased in severity" risks = risks with a non-null previous_severity.
 - "overdue" actions = past their due_date and not done/cancelled (already filtered for you below).
@@ -62,10 +75,26 @@ function listOrNone(lines: string[]): string {
   return lines.length ? lines.join('\n') : '(none)';
 }
 
+function describeRetrievedChunks(input: ProjectAssistantInput): string {
+  if (!input.retrievedChunks.length) {
+    return '(none found relevant to this question)';
+  }
+  return input.retrievedChunks
+    .map(
+      (c) =>
+        `--- type=document id=${c.document_id} | "${c.filename}"${c.section ? ` | section: ${c.section}` : ''} (relevance: ${c.similarity.toFixed(2)}) ---\n${c.content}`,
+    )
+    .join('\n\n');
+}
+
 export function buildUserPrompt(input: ProjectAssistantInput): string {
   return `${describeProject(input)}
 
 Question: "${input.question}"
+
+=== Project documents (retrieved passages, most relevant to this question) ===
+
+${describeRetrievedChunks(input)}
 
 === Reference data (approved only, except decisions which include pending) ===
 

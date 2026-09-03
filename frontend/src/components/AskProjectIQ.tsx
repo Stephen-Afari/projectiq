@@ -7,6 +7,7 @@ import {
   type ProjectQueryResponse,
   type QueryAnswerPoint,
   type QueryCitation,
+  type QuerySource,
   type RecordType,
 } from '../lib/api';
 import { SkeletonBlock } from './Skeleton';
@@ -21,7 +22,10 @@ const SUGGESTED_QUESTIONS = [
   'Generate a steering committee update.',
 ];
 
-const CITATION_TYPE_TO_RECORD_TYPE: Record<Exclude<QueryCitation['type'], 'meeting'>, RecordType> = {
+const CITATION_TYPE_TO_RECORD_TYPE: Record<
+  Exclude<QueryCitation['type'], 'meeting' | 'document'>,
+  RecordType
+> = {
   action: 'actions',
   risk: 'risks',
   issue: 'issues',
@@ -38,18 +42,19 @@ const CONFIDENCE_STYLES: Record<ConfidenceType, string> = {
 
 type ChatMessage =
   | { id: string; role: 'user'; text: string }
-  | { id: string; role: 'assistant'; answer: QueryAnswerPoint[]; data_gap: string | null }
+  | { id: string; role: 'assistant'; answer: QueryAnswerPoint[]; data_gap: string | null; sources: QuerySource[] }
   | { id: string; role: 'error'; text: string; retryQuestion: string };
 
 function newId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/** Non-document citations link straight into the existing drill-down/meeting screens, unchanged. */
 function CitationPill({ citation, projectId }: { citation: QueryCitation; projectId: string }) {
   const href =
     citation.type === 'meeting'
       ? `/meetings/${citation.id}/results`
-      : `/projects/${projectId}/${CITATION_TYPE_TO_RECORD_TYPE[citation.type]}`;
+      : `/projects/${projectId}/${CITATION_TYPE_TO_RECORD_TYPE[citation.type as Exclude<QueryCitation['type'], 'meeting' | 'document'>]}`;
   return (
     <Link
       to={href}
@@ -60,7 +65,27 @@ function CitationPill({ citation, projectId }: { citation: QueryCitation; projec
   );
 }
 
-function AnswerPointRow({ point, projectId }: { point: QueryAnswerPoint; projectId: string }) {
+function findSource(sources: QuerySource[], citation: QueryCitation): QuerySource | undefined {
+  return sources.find(
+    (s) => s.document_id === citation.id && (!citation.section || s.section === citation.section),
+  );
+}
+
+function AnswerPointRow({
+  point,
+  projectId,
+  sources,
+}: {
+  point: QueryAnswerPoint;
+  projectId: string;
+  sources: QuerySource[];
+}) {
+  // Document citations expand inline to show the actual source passage —
+  // no drill-down screen exists for documents, so this is the "click a
+  // citation to see the source" affordance for them.
+  const [expandedCitation, setExpandedCitation] = useState<QueryCitation | null>(null);
+  const expandedSource = expandedCitation ? findSource(sources, expandedCitation) : null;
+
   return (
     <div className="text-sm">
       <div className="flex items-start gap-2">
@@ -73,9 +98,36 @@ function AnswerPointRow({ point, projectId }: { point: QueryAnswerPoint; project
       </div>
       {point.citations.length > 0 && (
         <div className="mt-1.5 ml-[calc(1.5rem+0.5rem)] flex flex-wrap gap-1">
-          {point.citations.map((c, i) => (
-            <CitationPill key={`${c.type}-${c.id}-${i}`} citation={c} projectId={projectId} />
-          ))}
+          {point.citations.map((c, i) =>
+            c.type === 'document' ? (
+              <button
+                key={`document-${c.id}-${c.section ?? ''}-${i}`}
+                type="button"
+                onClick={() => setExpandedCitation((prev) => (prev === c ? null : c))}
+                className="rounded-full border border-purple-300 bg-purple-50 px-2 py-0.5 text-[11px] text-purple-700 hover:border-purple-400 hover:bg-purple-100"
+              >
+                📄 {c.label}
+                {c.section ? ` — ${c.section}` : ''}
+              </button>
+            ) : (
+              <CitationPill key={`${c.type}-${c.id}-${i}`} citation={c} projectId={projectId} />
+            ),
+          )}
+        </div>
+      )}
+      {expandedCitation && (
+        <div className="mt-1.5 ml-[calc(1.5rem+0.5rem)] rounded border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-900">
+          {expandedSource ? (
+            <>
+              <p className="font-medium">
+                {expandedSource.filename}
+                {expandedSource.section ? ` — ${expandedSource.section}` : ''}
+              </p>
+              <p className="mt-1 whitespace-pre-wrap text-purple-800">{expandedSource.content}</p>
+            </>
+          ) : (
+            <p className="text-slate-500">Source passage not available.</p>
+          )}
         </div>
       )}
     </div>
@@ -85,16 +137,18 @@ function AnswerPointRow({ point, projectId }: { point: QueryAnswerPoint; project
 function AssistantBubble({
   answer,
   dataGap,
+  sources,
   projectId,
 }: {
   answer: QueryAnswerPoint[];
   dataGap: string | null;
+  sources: QuerySource[];
   projectId: string;
 }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2.5">
       {answer.map((point, i) => (
-        <AnswerPointRow key={i} point={point} projectId={projectId} />
+        <AnswerPointRow key={i} point={point} projectId={projectId} sources={sources} />
       ))}
       {dataGap && (
         <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -127,7 +181,7 @@ export default function AskProjectIQ({ projectId }: { projectId: string }) {
       const res: ProjectQueryResponse = await queryProject(projectId, trimmed);
       setMessages((prev) => [
         ...prev,
-        { id: newId(), role: 'assistant', answer: res.answer, data_gap: res.data_gap },
+        { id: newId(), role: 'assistant', answer: res.answer, data_gap: res.data_gap, sources: res.sources },
       ]);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to reach ProjectIQ.';
@@ -146,7 +200,8 @@ export default function AskProjectIQ({ projectId }: { projectId: string }) {
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Ask ProjectIQ</h3>
       <p className="mt-1 text-xs text-slate-400">
-        Answers are grounded in this project's approved data — not general knowledge.
+        Answers are grounded in this project's approved data and uploaded documents — not general
+        knowledge.
       </p>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -181,7 +236,7 @@ export default function AskProjectIQ({ projectId }: { projectId: string }) {
           if (m.role === 'assistant') {
             return (
               <div key={m.id} className="max-w-[95%]">
-                <AssistantBubble answer={m.answer} dataGap={m.data_gap} projectId={projectId} />
+                <AssistantBubble answer={m.answer} dataGap={m.data_gap} sources={m.sources} projectId={projectId} />
               </div>
             );
           }

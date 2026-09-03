@@ -9,6 +9,7 @@ import type {
   Risk,
 } from '../../db/types.js';
 import type { SubHealth } from '../../lib/projectHealth.js';
+import type { ChunkSearchResult } from '../../services/retrieval.js';
 
 export interface ProjectAssistantInput {
   project: Project;
@@ -16,6 +17,10 @@ export interface ProjectAssistantInput {
   question: string;
   sinceLastMeeting: string | null;
   meetings: Meeting[];
+  // Top-k, threshold-passed passages from the project's uploaded
+  // documents (backend/src/services/retrieval.ts) — may be empty if
+  // nothing relevant was found, which is itself meaningful (see prompt.ts).
+  retrievedChunks: ChunkSearchResult[];
   // Approved-only, per the "everything grounds in approved data" rule
   // already established for the dashboard/alerts/weekly-report — except
   // decisions, the one deliberate exception (see decisions below).

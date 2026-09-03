@@ -32,3 +32,4 @@ export * from './tables/changeSignals.js';
 export * from './tables/agentRuns.js';
 export * from './tables/weeklyReports.js';
 export * from './tables/auditLog.js';
+export * from './tables/projectChunks.js';

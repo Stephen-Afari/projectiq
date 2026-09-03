@@ -70,6 +70,15 @@ export function createDbMocks() {
     createWeeklyReport: vi.fn(),
     createAgentRun: vi.fn(),
     createAuditLogEntry: vi.fn(),
+    // documents / RAG chunks
+    listDocumentsByProject: vi.fn(),
+    getDocumentById: vi.fn(),
+    createDocument: vi.fn(),
+    updateDocumentIngestionStatus: vi.fn(),
+    createProjectChunks: vi.fn(),
+    listChunksByDocument: vi.fn(),
+    listChunksByProject: vi.fn(),
+    searchProjectChunks: vi.fn().mockResolvedValue([]),
   };
 }
 

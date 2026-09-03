@@ -30,4 +30,24 @@ export const config = {
   // swap, per CLAUDE.md Tech Stack.
   llmProvider: (process.env.LLM_PROVIDER ?? 'anthropic') as 'anthropic' | 'openrouter',
   anthropicModel: process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-5',
+  // Single place that configures which embedding provider the document
+  // ingestion pipeline uses — see backend/src/services/embeddings/.
+  // 'local' (Xenova/transformers.js, runs in-process, no API key/cost) is
+  // the only implemented provider today; a hosted provider (OpenAI/Voyage)
+  // can be added behind the same interface later if quality/scale needs it.
+  embeddingProvider: (process.env.EMBEDDING_PROVIDER ?? 'local') as 'local',
+  embeddingModel: process.env.EMBEDDING_MODEL ?? 'Xenova/all-MiniLM-L6-v2',
+  // Character-based sliding window (backend/src/services/chunking.ts) —
+  // not token-based, to avoid a tokenizer dependency for a first pass.
+  chunkSize: Number(process.env.CHUNK_SIZE ?? 1000),
+  chunkOverlap: Number(process.env.CHUNK_OVERLAP ?? 150),
+  maxDocumentSizeBytes: Number(process.env.MAX_DOCUMENT_SIZE_BYTES ?? 20 * 1024 * 1024),
+  // How many chunks the Project Assistant's retriever pulls per question
+  // (backend/src/services/retrieval.ts) and the minimum cosine similarity
+  // a chunk must clear to be considered relevant at all — top-k nearest
+  // neighbor alone always returns k results even when nothing is
+  // actually relevant; the threshold is what makes "the documents don't
+  // cover this" a real, distinguishable outcome.
+  retrievalTopK: Number(process.env.RETRIEVAL_TOP_K ?? 8),
+  retrievalMinSimilarity: Number(process.env.RETRIEVAL_MIN_SIMILARITY ?? 0.3),
 };

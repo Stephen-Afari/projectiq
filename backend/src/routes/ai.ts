@@ -35,6 +35,7 @@ import {
   updateMeetingSummary,
 } from '../db/index.js';
 import { downloadTranscript } from '../services/transcriptStorage.js';
+import { retrieveRelevantChunks } from '../services/retrieval.js';
 import { runMeetingAnalysisPipeline } from '../agents/pipeline.js';
 import { runExecutiveReportingAgent } from '../agents/executive-reporting/index.js';
 import type { WeeklyReportInput } from '../agents/executive-reporting/index.js';
@@ -350,7 +351,7 @@ aiRouter.post(
 
     const project = await assertProjectAccess(project_id, req.user!.organisationId);
 
-    const [actions, risks, issues, decisions, dependencies, changeSignals, meetings] =
+    const [actions, risks, issues, decisions, dependencies, changeSignals, meetings, retrievedChunks] =
       await Promise.all([
         listActionsByProject(project_id),
         listRisksByProject(project_id),
@@ -359,6 +360,7 @@ aiRouter.post(
         listDependenciesByProject(project_id),
         listChangeSignalsByProject(project_id),
         listMeetingsByProject(project_id),
+        retrieveRelevantChunks(project_id, question),
       ]);
 
     const isApproved = <T extends { approval_status: string }>(item: T) =>
@@ -399,6 +401,7 @@ aiRouter.post(
       dependency: new Set(approvedDependencies.map((d) => d.id)),
       change_signal: new Set(approvedChangeSignals.map((c) => c.id)),
       meeting: new Set(meetings.map((m) => m.id)),
+      document: new Set(retrievedChunks.map((c) => c.document_id)),
     };
 
     const agentInput: ProjectAssistantInput = {
@@ -407,6 +410,7 @@ aiRouter.post(
       question,
       sinceLastMeeting,
       meetings,
+      retrievedChunks,
       actions: approvedActions,
       risks: approvedRisks,
       issues: approvedIssues,
@@ -425,7 +429,11 @@ aiRouter.post(
       project_id,
       model: run.model,
       prompt_version: run.promptVersion,
-      input_refs: { question, since_last_meeting: sinceLastMeeting },
+      input_refs: {
+        question,
+        since_last_meeting: sinceLastMeeting,
+        retrieved_chunk_ids: retrievedChunks.map((c) => c.id),
+      },
       raw_output: run.rawOutput,
       validation_passed: run.validationPassed,
       error_message: run.errorMessage,
@@ -451,6 +459,11 @@ aiRouter.post(
       question,
       answer,
       data_gap: run.result.data_gap,
+      // The retrieved passages the answer could cite from — lets the
+      // frontend resolve "click a document citation -> show the source
+      // passage" by matching (document_id, section) client-side, with no
+      // extra round trip.
+      sources: retrievedChunks,
     });
   }),
 );

@@ -19,6 +19,7 @@ import {
   listChangeSignalsByProject,
   listMeetingsByProject,
   listWeeklyReportsByProject,
+  listDocumentsByProject,
 } from '../db/index.js';
 
 export const projectsRouter = Router();
@@ -185,6 +186,14 @@ projectsRouter.get(
   loadProjectInOrg,
   asyncHandler(async (req, res) => {
     res.json(await listMeetingsByProject(req.project!.id));
+  }),
+);
+
+projectsRouter.get(
+  '/:id/documents',
+  loadProjectInOrg,
+  asyncHandler(async (req, res) => {
+    res.json(await listDocumentsByProject(req.project!.id));
   }),
 );
 

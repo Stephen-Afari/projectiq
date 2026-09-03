@@ -13,9 +13,22 @@ import { confidenceTypeSchema } from '../shared/confidence.js';
  */
 
 export const queryCitationSchema = z.object({
-  type: z.enum(['action', 'risk', 'issue', 'decision', 'dependency', 'change_signal', 'meeting']),
+  type: z.enum([
+    'action',
+    'risk',
+    'issue',
+    'decision',
+    'dependency',
+    'change_signal',
+    'meeting',
+    'document',
+  ]),
+  // The document's id (not a chunk id) for type "document" — a citation
+  // should point at something a user can recognize and revisit.
   id: z.string().min(1),
   label: z.string().min(1),
+  // Page/heading, only meaningful (and only ever set) for type "document".
+  section: z.string().nullable().optional(),
 });
 
 export const queryAnswerPointSchema = z.object({

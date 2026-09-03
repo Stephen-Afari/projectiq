@@ -109,12 +109,38 @@ export interface Meeting {
   created_at: string;
 }
 
+export type DocumentIngestionStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
 export interface ProjectDocument {
   id: string;
   project_id: string;
   filename: string;
   document_type: string | null;
   storage_url: string | null;
+  ingestion_status: DocumentIngestionStatus;
+  ingestion_error: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
+/**
+ * Written by the document ingestion pipeline
+ * (backend/src/services/documentIngestion.ts) — one row per chunk of an
+ * uploaded document, with its embedding vector. Not an AI-extracted
+ * entity (no approval_status/confidence_type) — derived data for a
+ * future RAG retrieval phase, always regenerable from the source
+ * document. See backend/src/services/embeddings/.
+ */
+export interface ProjectChunk {
+  id: string;
+  project_id: string;
+  document_id: string;
+  chunk_index: number;
+  content: string;
+  section: string | null;
+  embedding: number[];
   created_at: string;
 }
 

@@ -262,9 +262,12 @@ export function getProjectMeetings(projectId: string): Promise<Meeting[]> {
 }
 
 export interface QueryCitation {
-  type: 'action' | 'risk' | 'issue' | 'decision' | 'dependency' | 'change_signal' | 'meeting';
+  type: 'action' | 'risk' | 'issue' | 'decision' | 'dependency' | 'change_signal' | 'meeting' | 'document';
+  // The document's id (not a chunk id) when type is "document".
   id: string;
   label: string;
+  // Page/heading — only present for type "document".
+  section?: string | null;
 }
 
 export interface QueryAnswerPoint {
@@ -273,11 +276,24 @@ export interface QueryAnswerPoint {
   citations: QueryCitation[];
 }
 
+/** A retrieved document passage the answer could cite — matched against a citation by (document_id, section). */
+export interface QuerySource {
+  id: string;
+  document_id: string;
+  chunk_index: number;
+  content: string;
+  section: string | null;
+  filename: string;
+  document_type: string | null;
+  similarity: number;
+}
+
 export interface ProjectQueryResponse {
   project: { id: string; name: string };
   question: string;
   answer: QueryAnswerPoint[];
   data_gap: string | null;
+  sources: QuerySource[];
 }
 
 export function queryProject(projectId: string, question: string): Promise<ProjectQueryResponse> {
@@ -285,6 +301,66 @@ export function queryProject(projectId: string, question: string): Promise<Proje
     method: 'POST',
     body: JSON.stringify({ project_id: projectId, question }),
   });
+}
+
+export type DocumentIngestionStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+export interface ProjectDocument {
+  id: string;
+  project_id: string;
+  filename: string;
+  document_type: string | null;
+  ingestion_status: DocumentIngestionStatus;
+  ingestion_error: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  created_at: string;
+}
+
+export const DOCUMENT_TYPE_OPTIONS = [
+  { value: 'charter', label: 'Project Charter' },
+  { value: 'plan', label: 'Project Plan' },
+  { value: 'raid_register', label: 'RAID / Risk Register' },
+  { value: 'meeting_minutes', label: 'Previous Meeting Minutes' },
+  { value: 'requirements', label: 'Requirements' },
+  { value: 'contract', label: 'Contract' },
+  { value: 'sop', label: 'SOP' },
+  { value: 'change_request', label: 'Change Request' },
+  { value: 'status_report', label: 'Status Report' },
+  { value: 'budget', label: 'Budget Info' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+export function listProjectDocuments(projectId: string): Promise<ProjectDocument[]> {
+  return request<ProjectDocument[]>(`/projects/${projectId}/documents`);
+}
+
+/**
+ * The one deliberate exception to request()'s JSON-only convention:
+ * FormData needs the browser to set its own multipart boundary, so this
+ * omits Content-Type entirely rather than reusing request()'s hardcoded
+ * 'application/json' header.
+ */
+export async function uploadDocument(
+  projectId: string,
+  file: File,
+  documentType?: string,
+): Promise<{ document: ProjectDocument; chunk_count: number }> {
+  const formData = new FormData();
+  formData.append('project_id', projectId);
+  if (documentType) formData.append('document_type', documentType);
+  formData.append('file', file);
+
+  const res = await fetch('/api/documents', {
+    method: 'POST',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    body: formData,
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new ApiError(body?.error?.message ?? `Request failed (${res.status})`, body?.error?.details);
+  }
+  return body;
 }
 
 /** Maps a MeetingResults key to its API URL segment (change_signals -> change-signals). */
