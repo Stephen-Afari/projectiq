@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import {
   ApiError,
   queryProject,
-  type ConfidenceType,
   type ProjectQueryResponse,
   type QueryAnswerPoint,
   type QueryCitation,
@@ -11,6 +10,8 @@ import {
   type RecordType,
 } from '../lib/api';
 import { SkeletonBlock } from './Skeleton';
+import { Card, CardTitle } from './ui/Card';
+import { CONFIDENCE_TONE, Badge } from './ui/Badge';
 
 const SUGGESTED_QUESTIONS = [
   'What changed since our last project meeting?',
@@ -34,12 +35,6 @@ const CITATION_TYPE_TO_RECORD_TYPE: Record<
   change_signal: 'change-signals',
 };
 
-const CONFIDENCE_STYLES: Record<ConfidenceType, string> = {
-  fact: 'bg-green-100 text-green-800 border-green-300',
-  inference: 'bg-amber-100 text-amber-800 border-amber-300',
-  recommendation: 'bg-blue-100 text-blue-800 border-blue-300',
-};
-
 type ChatMessage =
   | { id: string; role: 'user'; text: string }
   | { id: string; role: 'assistant'; answer: QueryAnswerPoint[]; data_gap: string | null; sources: QuerySource[] }
@@ -58,8 +53,12 @@ function CitationPill({ citation, projectId }: { citation: QueryCitation; projec
   return (
     <Link
       to={href}
-      className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600 hover:border-slate-400 hover:bg-slate-100 hover:text-slate-800"
+      className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-100"
     >
+      <svg width="10" height="10" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+        <path d="M8 12a4 4 0 0 0 6 0l2-2a4 4 0 0 0-6-6l-1 1" strokeLinecap="round" />
+        <path d="M12 8a4 4 0 0 0-6 0l-2 2a4 4 0 0 0 6 6l1-1" strokeLinecap="round" />
+      </svg>
       {citation.label}
     </Link>
   );
@@ -89,11 +88,11 @@ function AnswerPointRow({
   return (
     <div className="text-sm">
       <div className="flex items-start gap-2">
-        <span
-          className={`mt-0.5 shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide ${CONFIDENCE_STYLES[point.confidence_type]}`}
-        >
-          {point.confidence_type}
-        </span>
+        <Badge
+          text={point.confidence_type}
+          tone={CONFIDENCE_TONE[point.confidence_type]}
+          className="mt-0.5 shrink-0"
+        />
         <p className="text-slate-800">{point.text}</p>
       </div>
       {point.citations.length > 0 && (
@@ -104,7 +103,7 @@ function AnswerPointRow({
                 key={`document-${c.id}-${c.section ?? ''}-${i}`}
                 type="button"
                 onClick={() => setExpandedCitation((prev) => (prev === c ? null : c))}
-                className="rounded-full border border-purple-300 bg-purple-50 px-2 py-0.5 text-[11px] text-purple-700 hover:border-purple-400 hover:bg-purple-100"
+                className="rounded-full border border-purple-300 bg-purple-50 px-2 py-0.5 text-[11px] text-purple-700 transition-colors hover:border-purple-400 hover:bg-purple-100"
               >
                 📄 {c.label}
                 {c.section ? ` — ${c.section}` : ''}
@@ -146,7 +145,7 @@ function AssistantBubble({
   projectId: string;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2.5">
+    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2.5 shadow-sm">
       {answer.map((point, i) => (
         <AnswerPointRow key={i} point={point} projectId={projectId} sources={sources} />
       ))}
@@ -197,8 +196,8 @@ export default function AskProjectIQ({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Ask ProjectIQ</h3>
+    <Card>
+      <CardTitle>Ask ProjectIQ</CardTitle>
       <p className="mt-1 text-xs text-slate-400">
         Answers are grounded in this project's approved data and uploaded documents — not general
         knowledge.
@@ -211,14 +210,14 @@ export default function AskProjectIQ({ projectId }: { projectId: string }) {
             type="button"
             disabled={pending}
             onClick={() => ask(q)}
-            className="rounded-full border border-slate-300 px-2.5 py-1 text-[11px] text-slate-600 hover:border-slate-400 hover:bg-slate-50 disabled:opacity-40"
+            className="rounded-full border border-slate-300 px-2.5 py-1 text-[11px] text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:opacity-40"
           >
             {q}
           </button>
         ))}
       </div>
 
-      <div className="mt-3 max-h-96 space-y-3 overflow-y-auto rounded-md border border-slate-100 bg-slate-50 p-3">
+      <div className="mt-3 max-h-[60vh] space-y-3 overflow-y-auto rounded-md border border-slate-100 bg-slate-50 p-3 sm:max-h-96">
         {messages.length === 0 && !pending && (
           <p className="text-sm text-slate-400">
             Ask a question about this project, or click a suggestion above.
@@ -245,7 +244,7 @@ export default function AskProjectIQ({ projectId }: { projectId: string }) {
               <p>{m.text}</p>
               <button
                 onClick={() => ask(m.retryQuestion)}
-                className="mt-2 rounded border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                className="mt-2 rounded border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-50"
               >
                 Try again
               </button>
@@ -263,23 +262,23 @@ export default function AskProjectIQ({ projectId }: { projectId: string }) {
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-3 flex gap-2">
+      <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2 sm:flex-row">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={pending}
           placeholder="Ask a question about this project…"
-          className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-60"
+          className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-60"
         />
         <button
           type="submit"
           disabled={pending || !input.trim()}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
         >
           {pending ? 'Asking…' : 'Ask'}
         </button>
       </form>
-    </div>
+    </Card>
   );
 }

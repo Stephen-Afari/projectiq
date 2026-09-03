@@ -636,17 +636,61 @@ Conventions), added 2026-09-07 — see
   render as a message *in* the conversation (not a page-level banner),
   with a "Try again" button that resends the exact failed question.
 - `frontend/src/pages/ProjectDashboard.tsx` follows `MeetingResults.tsx`'s
-  established conventions: same loading/error/data state pattern, same
-  card shell (`rounded-lg border bg-white p-4 shadow-sm border-slate-200`),
-  same badge shape (`rounded border px-1.5 py-0.5 text-[11px] font-medium
-  uppercase tracking-wide`). Local `HEALTH_STYLES`/`SEVERITY_STYLES`/
-  `CONFIDENCE_STYLES` color maps are colocated in the file, same pattern
-  as `CONFIDENCE_STYLES`/`StatusBadge` in `MeetingResults.tsx` — no
-  centralized theme tokens exist in `tailwind.config.js`, so semantic
-  color conventions live by usage in each screen. No charting library
-  added; health/severity render as colored badges and simple stat cells,
-  matching the codebase's existing plain-Tailwind restraint (confirmed
-  nothing else in the frontend uses one).
+  established loading/error/data state pattern. No charting library added;
+  health/severity render as colored badges and simple stat cells, matching
+  the codebase's existing plain-Tailwind restraint (confirmed nothing else
+  in the frontend uses one). Its 5-card intelligence grid is
+  `grid-cols-1 md:grid-cols-2 xl:grid-cols-3` specifically so 5 cards land
+  3-then-2 and nothing is ever stranded alone in its own row at any
+  breakpoint.
+- **Design system** (`frontend/tailwind.config.js`,
+  `frontend/src/components/ui/`) — added in the 2026-09-08 design-polish
+  pass (see `docs/decision-log/2026-09-08-design-polish-pass.md`), the
+  first centralized token/primitive layer in the frontend:
+  - `tailwind.config.js` defines `theme.extend.colors.brand` (aliases
+    Tailwind's own `indigo` scale via `tailwindcss/colors` — no
+    hand-picked hex values) for primary buttons, links, active/focus
+    state, and the header wordmark, plus `theme.extend.fontFamily.sans`
+    (Inter, loaded via a Google Fonts `<link>` in `index.html`, applied
+    app-wide by `font-sans antialiased` on `body` in `index.css` — no new
+    npm font dependency). The existing semantic palette — slate
+    (neutral/pending), green (approved/fact/health-good), amber
+    (inference/warning/duplicate/health-warning), red (rejected/critical/
+    health-bad/errors), blue (recommendation/info), purple (Impact
+    Analyst/document citations), orange (high severity) — is deliberately
+    untouched; `brand` is additive, not a re-theming, since these colors
+    encode the approval-gate and confidence-type meaning that must stay
+    obvious.
+  - `components/ui/Badge.tsx` is the single source of truth for badge
+    styling (shell + `BadgeTone` map), replacing what had drifted into
+    five independently-duplicated color-key maps across
+    `ProjectDashboard`/`MeetingResults`/`AskProjectIQ`/`DocumentUpload`/
+    `ProjectRecords`. Exports the shell (`Badge`) plus convenience
+    wrappers (`ConfidenceBadge`, `HealthBadge`, `SeverityBadge`,
+    `StatusBadge`) and the tone maps themselves
+    (`CONFIDENCE_TONE`/`HEALTH_TONE`/`SEVERITY_TONE`/`APPROVAL_TONE`/
+    `INGESTION_TONE`) for call sites that need the tone directly (e.g. a
+    citation-legend loop). `components/ui/Card.tsx` (`Card` shell +
+    `CardTitle`, with optional `linkTo`/`icon`) replaces the repeated
+    `rounded-lg border border-slate-200 bg-white p-4 shadow-sm` markup.
+    `components/ui/StatusBanner.tsx` (`ErrorBanner` with optional
+    `onRetry`, `InfoBanner`) replaces the ad hoc red-error-box and blue/
+    amber info-banner patterns that had been hand-rolled per screen. All
+    screens/components under Frontend Conventions now consume these
+    rather than defining their own — a new badge/card/banner need is
+    added here, not re-invented at the call site.
+  - Small glyphs (Dashboard card-title icons, the AI Assistant's entity-
+    citation link icon) are hand-authored inline SVGs, not an icon
+    library — consistent with the no-speculative-dependency rule; add a
+    real icon package only once the glyph count actually justifies one.
+  - Responsive coverage: the header (`App.tsx`) collapses its nav behind
+    a menu button below `sm`; every target screen's page padding is
+    `px-4 sm:px-6`; forms/filter controls stack `flex-col` and go
+    `sm:flex-row` above the `sm` breakpoint; the AI Assistant's chat
+    scroll area is `max-h-[60vh] sm:max-h-96` rather than a flat fixed
+    height.
+  - Every page sets `document.title` (`ProjectIQ · <Screen>`) via a small
+    `useEffect` — no router-level title management introduced for this.
 - `frontend/src/lib/api.ts` is the only place that calls `fetch` — typed
   request/response shapes per resource, a shared `ApiError` thrown on any
   non-2xx (carrying the API's `{ message, details }`), and a
@@ -887,3 +931,39 @@ via `npm test` (root, forwards to the backend workspace) or
   updated in place to reflect current system state (not appended to).
 - Keep this CLAUDE.md itself updated when conventions change; treat drift
   between this file and actual code as a bug.
+
+## Next Steps
+As of the 2026-09-08 design-polish pass, the pipeline, approval gate,
+dashboard, meeting review screen, and AI assistant are functionally
+complete and demo-ready. Remaining work, roughly in the order it should
+be tackled:
+
+- **Phase 9 integrations**: replace the Approval Hand-off event's
+  placeholder n8n downstream node (`n8n/approval_handoff.json`) with a
+  real push into an actual PM tool (Jira/Planner, per the original
+  scope) — the webhook contract and `X-N8N-Webhook-Secret` signing
+  already exist (see Security/API Conventions above); only the n8n-side
+  node and the target system's field mapping remain.
+- **Deploy**: Supabase is already hosted; `frontend/` and `backend/`
+  still need a hosting decision and a real `FRONTEND_BASE_URL`/CORS
+  config for production (currently same-origin dev assumptions in
+  several places — e.g. the Project Alerts `project.url` construction).
+  n8n also needs a persistent host if it isn't already deployed
+  alongside development.
+- **Multi-project portfolio view**: a cross-project rollup dashboard —
+  the natural next step now that a single project's `ProjectDashboard`
+  is solid. Likely reuses `SubHealthCard`/`StatCell`/the new
+  `components/ui/` primitives rather than introducing new visual
+  patterns; needs a new `GET /api/dashboard` (all-projects) aggregate
+  endpoint analogous to the existing per-project one.
+- **Supabase Auth hardening**: `Login.tsx`/`authContext.tsx` cover
+  email/password sign-in only (see Frontend Conventions); no
+  signup/invite/reset flow exists yet — demo users are seeded directly
+  via `backend/scripts/seed.ts`. Needed before this could be handed to
+  real, self-service users rather than a fixed demo roster.
+- **Re-run `/ralph-loop` and the `frontend-design` skill for real**: the
+  2026-09-08 pass simulated the Ralph Loop technique manually because
+  the plugin's Stop hook and the skill weren't active mid-session (see
+  the decision-log entry for the full explanation). Now that a session
+  restart has occurred, running the actual tooling for an independent
+  second pass is a reasonable next step before the next major demo.

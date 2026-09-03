@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/authContext';
+import { ErrorBanner } from '../components/ui/StatusBanner';
 
 export default function Login() {
   const { signIn } = useAuth();
@@ -7,6 +8,10 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    document.title = 'ProjectIQ · Sign in';
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -17,8 +22,11 @@ export default function Login() {
     setSubmitting(false);
   }
 
+  const inputClass =
+    'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-60';
+
   return (
-    <div className="mx-auto flex min-h-[80vh] max-w-sm flex-col justify-center px-6">
+    <div className="mx-auto flex min-h-[80vh] max-w-sm flex-col justify-center px-4 sm:px-6">
       <h2 className="text-xl font-semibold text-slate-900">Sign in to ProjectIQ</h2>
       <p className="mt-1 text-sm text-slate-500">Use your organisation's ProjectIQ account.</p>
 
@@ -34,7 +42,7 @@ export default function Login() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             disabled={submitting}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className={inputClass}
           />
         </div>
         <div>
@@ -48,20 +56,16 @@ export default function Login() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={submitting}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className={inputClass}
           />
         </div>
 
-        {error && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+        {error && <ErrorBanner message={error} />}
 
         <button
           type="submit"
           disabled={submitting || !email || !password}
-          className="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+          className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
         >
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>

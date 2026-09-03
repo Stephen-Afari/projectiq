@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   ApiError,
@@ -11,6 +11,10 @@ import {
   type MeetingResults as MeetingResultsData,
   type ResourceKey,
 } from '../lib/api';
+import { SkeletonBlock, SkeletonCard } from '../components/Skeleton';
+import { Card, CardTitle } from '../components/ui/Card';
+import { ErrorBanner } from '../components/ui/StatusBanner';
+import { Badge, ConfidenceBadge, CONFIDENCE_TONE, StatusBadge } from '../components/ui/Badge';
 
 type EntityRecord = Record<string, unknown> & {
   id: string;
@@ -28,33 +32,22 @@ interface FieldConfig {
   options?: readonly string[];
 }
 
-const CONFIDENCE_STYLES: Record<ConfidenceType, string> = {
-  fact: 'bg-green-100 text-green-800 border-green-300',
-  inference: 'bg-amber-100 text-amber-800 border-amber-300',
-  recommendation: 'bg-blue-100 text-blue-800 border-blue-300',
-};
+// One row per Section below — used to compute the summary bar and quick-nav
+// without re-deriving counts from six separately-typed props.
+const SECTION_META = [
+  { key: 'actions', id: 'actions', title: 'Actions' },
+  { key: 'risks', id: 'risks', title: 'Risks' },
+  { key: 'issues', id: 'issues', title: 'Issues' },
+  { key: 'decisions', id: 'decisions', title: 'Decisions' },
+  { key: 'dependencies', id: 'dependencies', title: 'Dependencies' },
+  { key: 'change_signals', id: 'change-signals', title: 'Change Signals' },
+] as const satisfies ReadonlyArray<{ key: keyof MeetingResultsData; id: string; title: string }>;
 
-function ConfidenceBadge({ type }: { type: ConfidenceType | null }) {
-  if (!type) return null;
-  return (
-    <span className={`rounded border px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide ${CONFIDENCE_STYLES[type]}`}>
-      {type}
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    pending: 'bg-slate-100 text-slate-600 border-slate-300',
-    approved: 'bg-green-100 text-green-800 border-green-300',
-    rejected: 'bg-red-100 text-red-700 border-red-300',
-  };
-  return (
-    <span className={`rounded border px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide ${styles[status] ?? ''}`}>
-      {status}
-    </span>
-  );
-}
+const CONFIDENCE_LEGEND: Array<{ type: ConfidenceType; description: string }> = [
+  { type: 'fact', description: 'directly stated in the transcript' },
+  { type: 'inference', description: "the agent's derived judgement" },
+  { type: 'recommendation', description: 'a suggested action, not auto-applied' },
+];
 
 function ImpactCallout({ impact }: { impact: ImpactAssessment }) {
   const dims: Array<[string, string | null]> = [
@@ -68,7 +61,7 @@ function ImpactCallout({ impact }: { impact: ImpactAssessment }) {
 
   if (!impact.applicable) {
     return (
-      <div className="mt-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+      <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
         <span className="font-medium uppercase tracking-wide text-slate-400">Impact Analyst (inference):</span>{' '}
         no material impact identified{impact.reasoning ? ` — ${impact.reasoning}` : ''}
       </div>
@@ -76,7 +69,7 @@ function ImpactCallout({ impact }: { impact: ImpactAssessment }) {
   }
 
   return (
-    <div className="mt-2 rounded border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-900">
+    <div className="rounded border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-900">
       <div className="mb-1 font-medium uppercase tracking-wide text-purple-500">
         Impact Analyst (inference)
       </div>
@@ -95,7 +88,7 @@ function ImpactCallout({ impact }: { impact: ImpactAssessment }) {
 function DuplicateBanner({ flags }: { flags: ContextFlags }) {
   if (!flags.is_likely_duplicate) return null;
   return (
-    <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+    <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
       <span className="font-semibold uppercase tracking-wide">Possible duplicate</span>
       {flags.duplicate_reasoning && <p className="mt-0.5">{flags.duplicate_reasoning}</p>}
     </div>
@@ -105,7 +98,7 @@ function DuplicateBanner({ flags }: { flags: ContextFlags }) {
 function RelatedItems({ flags }: { flags: ContextFlags }) {
   if (!flags.related_items.length) return null;
   return (
-    <div className="mt-2 text-xs text-slate-500">
+    <div className="text-xs text-slate-500">
       <span className="font-medium text-slate-600">Related:</span>{' '}
       {flags.related_items.map((r, i) => (
         <span key={i}>
@@ -177,10 +170,17 @@ function EditForm({
         </div>
       ))}
       <div className="flex gap-2 pt-1">
-        <button type="submit" className="rounded bg-slate-900 px-3 py-1 text-xs font-medium text-white">
+        <button
+          type="submit"
+          className="rounded bg-brand-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-brand-700"
+        >
           Save
         </button>
-        <button type="button" onClick={onCancel} className="rounded border border-slate-300 px-3 py-1 text-xs">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded border border-slate-300 px-3 py-1 text-xs transition-colors hover:bg-slate-50"
+        >
           Cancel
         </button>
       </div>
@@ -239,7 +239,7 @@ function ItemCard({
 
   return (
     <div
-      className={`rounded-lg border bg-white p-4 shadow-sm ${
+      className={`rounded-lg border bg-white p-4 shadow-sm transition-shadow ${
         isDuplicate ? 'border-l-4 border-l-amber-400 border-slate-200' : 'border-slate-200'
       }`}
     >
@@ -270,9 +270,15 @@ function ItemCard({
         </blockquote>
       )}
 
-      {item.context_flags && <DuplicateBanner flags={item.context_flags} />}
-      {item.context_flags && <RelatedItems flags={item.context_flags} />}
-      {item.impact_assessment && <ImpactCallout impact={item.impact_assessment} />}
+      {(item.context_flags?.is_likely_duplicate ||
+        item.context_flags?.related_items.length ||
+        item.impact_assessment) && (
+        <div className="mt-2 space-y-2">
+          {item.context_flags && <DuplicateBanner flags={item.context_flags} />}
+          {item.context_flags && <RelatedItems flags={item.context_flags} />}
+          {item.impact_assessment && <ImpactCallout impact={item.impact_assessment} />}
+        </div>
+      )}
 
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
 
@@ -289,21 +295,21 @@ function ItemCard({
             <button
               disabled={busy}
               onClick={() => approve('approved')}
-              className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40"
+              className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-40"
             >
               Approve
             </button>
             <button
               disabled={busy}
               onClick={() => approve('rejected')}
-              className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40"
+              className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-40"
             >
               Reject
             </button>
             <button
               disabled={busy}
               onClick={() => setEditing(true)}
-              className="rounded border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 disabled:opacity-40"
+              className="rounded border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40"
             >
               Edit
             </button>
@@ -315,6 +321,7 @@ function ItemCard({
 }
 
 function Section({
+  id,
   title,
   items,
   resource,
@@ -322,6 +329,7 @@ function Section({
   fields,
   onUpdated,
 }: {
+  id: string;
   title: string;
   items: EntityRecord[];
   resource: ResourceKey;
@@ -333,7 +341,7 @@ function Section({
   const reviewed = items.filter((i) => i.approval_status !== 'pending');
 
   return (
-    <section className="mt-8">
+    <section id={id} className="mt-8 scroll-mt-24">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
         {title} <span className="font-normal text-slate-400">({items.length})</span>
       </h3>
@@ -386,7 +394,7 @@ export default function MeetingResults() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!meetingId) return;
     setLoading(true);
     setError(null);
@@ -395,6 +403,14 @@ export default function MeetingResults() {
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load meeting results'))
       .finally(() => setLoading(false));
   }, [meetingId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    document.title = data ? `ProjectIQ · ${data.meeting.title}` : 'ProjectIQ · Meeting Results';
+  }, [data]);
 
   function updateCategory<K extends keyof MeetingResultsData>(key: K, updated: EntityRecord) {
     setData((prev) => {
@@ -407,31 +423,105 @@ export default function MeetingResults() {
     });
   }
 
+  const sectionCounts = useMemo(() => {
+    if (!data) return null;
+    return SECTION_META.map((s) => {
+      const items = data[s.key] as unknown as EntityRecord[];
+      return { ...s, total: items.length, pending: items.filter((i) => i.approval_status === 'pending').length };
+    });
+  }, [data]);
+
+  const summary = useMemo(() => {
+    if (!sectionCounts) return null;
+    const total = sectionCounts.reduce((sum, s) => sum + s.total, 0);
+    const pending = sectionCounts.reduce((sum, s) => sum + s.pending, 0);
+    return { total, pending, approved: total - pending };
+  }, [sectionCounts]);
+
   if (loading) {
-    return <div className="mx-auto max-w-3xl px-6 py-10 text-sm text-slate-500">Loading meeting results…</div>;
-  }
-  if (error) {
     return (
-      <div className="mx-auto max-w-3xl px-6 py-10">
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
+        <SkeletonBlock className="h-6 w-64" />
+        <SkeletonBlock className="mt-2 h-4 w-32" />
+        <div className="mt-6 grid grid-cols-3 gap-3">
+          <SkeletonCard lines={1} />
+          <SkeletonCard lines={1} />
+          <SkeletonCard lines={1} />
+        </div>
+        <div className="mt-8 space-y-3">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       </div>
     );
   }
-  if (!data) return null;
+  if (error) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
+        <ErrorBanner message={error} onRetry={load} />
+      </div>
+    );
+  }
+  if (!data || !summary || !sectionCounts) return null;
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
+    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
       <h2 className="text-xl font-semibold text-slate-900">{data.meeting.title}</h2>
       <p className="text-sm text-slate-500">{data.meeting.meeting_date}</p>
 
       {data.meeting.summary && (
-        <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Summary</h3>
-          <p className="mt-2 text-sm text-slate-700">{data.meeting.summary}</p>
+        <div className="mt-6">
+          <Card>
+            <CardTitle>Summary</CardTitle>
+            <p className="mt-2 text-sm text-slate-700">{data.meeting.summary}</p>
+          </Card>
         </div>
       )}
 
+      {/* Overview: extracted / pending / approved at a glance, plus a
+          once-explained legend so the confidence labels aren't left to
+          color alone. */}
+      <div className="mt-6 grid grid-cols-3 gap-3">
+        <div className="rounded-lg border border-slate-200 bg-white p-3 text-center shadow-sm">
+          <p className="text-xl font-semibold text-slate-900">{summary.total}</p>
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">Extracted</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-3 text-center shadow-sm">
+          <p className="text-xl font-semibold text-amber-600">{summary.pending}</p>
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">Pending Review</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-3 text-center shadow-sm">
+          <p className="text-xl font-semibold text-green-600">{summary.approved}</p>
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">Reviewed</p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+        {CONFIDENCE_LEGEND.map((l) => (
+          <span key={l.type} className="inline-flex items-center gap-1.5">
+            <Badge text={l.type} tone={CONFIDENCE_TONE[l.type]} />
+            {l.description}
+          </span>
+        ))}
+      </div>
+
+      {/* Quick-nav: jump to a section without scrolling past five others. */}
+      <nav className="sticky top-0 z-10 mt-4 -mx-4 flex gap-1 overflow-x-auto border-b border-slate-200 bg-slate-50/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6">
+        {sectionCounts.map((s) => (
+          <a
+            key={s.id}
+            href={`#${s.id}`}
+            className="shrink-0 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-brand-300 hover:text-brand-700"
+          >
+            {s.title} <span className="text-slate-400">{s.total}</span>
+            {s.pending > 0 && <span className="ml-1 text-amber-600">· {s.pending} pending</span>}
+          </a>
+        ))}
+      </nav>
+
       <Section
+        id="actions"
         title="Actions"
         items={data.actions as unknown as EntityRecord[]}
         resource="actions"
@@ -445,6 +535,7 @@ export default function MeetingResults() {
       />
 
       <Section
+        id="risks"
         title="Risks"
         items={data.risks as unknown as EntityRecord[]}
         resource="risks"
@@ -460,6 +551,7 @@ export default function MeetingResults() {
       />
 
       <Section
+        id="issues"
         title="Issues"
         items={data.issues as unknown as EntityRecord[]}
         resource="issues"
@@ -473,6 +565,7 @@ export default function MeetingResults() {
       />
 
       <Section
+        id="decisions"
         title="Decisions"
         items={data.decisions as unknown as EntityRecord[]}
         resource="decisions"
@@ -486,6 +579,7 @@ export default function MeetingResults() {
       />
 
       <Section
+        id="dependencies"
         title="Dependencies"
         items={data.dependencies as unknown as EntityRecord[]}
         resource="dependencies"
@@ -499,6 +593,7 @@ export default function MeetingResults() {
       />
 
       <Section
+        id="change-signals"
         title="Change Signals"
         items={data.change_signals as unknown as EntityRecord[]}
         resource="change_signals"

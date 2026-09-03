@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, analyseMeeting, createMeeting, listProjects, type Project } from '../lib/api';
+import { ErrorBanner, InfoBanner } from '../components/ui/StatusBanner';
 
 type Phase = 'idle' | 'saving' | 'analysing' | 'error';
 
@@ -13,6 +14,10 @@ export default function NewMeeting() {
   const [transcriptText, setTranscriptText] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.title = 'ProjectIQ · New Meeting';
+  }, []);
 
   useEffect(() => {
     listProjects()
@@ -58,8 +63,12 @@ export default function NewMeeting() {
     }
   }
 
+  const fieldsDisabled = phase !== 'idle' && phase !== 'error';
+  const inputClass =
+    'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-60';
+
   return (
-    <div className="mx-auto max-w-2xl px-6 py-10">
+    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
       <h2 className="text-xl font-semibold text-slate-900">New Meeting</h2>
       <p className="mt-1 text-sm text-slate-500">
         Capture a meeting transcript, link it to a project, and run AI analysis on it.
@@ -74,8 +83,8 @@ export default function NewMeeting() {
             id="project"
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            disabled={phase !== 'idle' && phase !== 'error'}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            disabled={fieldsDisabled}
+            className={inputClass}
           >
             <option value="">Select a project…</option>
             {projects.map((p) => (
@@ -95,8 +104,8 @@ export default function NewMeeting() {
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            disabled={phase !== 'idle' && phase !== 'error'}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            disabled={fieldsDisabled}
+            className={inputClass}
             placeholder="e.g. Steering Committee — Week 4"
           />
         </div>
@@ -110,8 +119,8 @@ export default function NewMeeting() {
             type="date"
             value={meetingDate}
             onChange={(e) => setMeetingDate(e.target.value)}
-            disabled={phase !== 'idle' && phase !== 'error'}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            disabled={fieldsDisabled}
+            className={inputClass}
           />
         </div>
 
@@ -124,8 +133,8 @@ export default function NewMeeting() {
             type="file"
             accept=".txt,.md"
             onChange={handleFileChange}
-            disabled={phase !== 'idle' && phase !== 'error'}
-            className="mt-1 w-full text-sm"
+            disabled={fieldsDisabled}
+            className="mt-1 w-full text-sm disabled:opacity-60"
           />
           <label className="mt-3 block text-sm font-medium text-slate-700" htmlFor="transcript">
             …or paste transcript text
@@ -134,34 +143,26 @@ export default function NewMeeting() {
             id="transcript"
             value={transcriptText}
             onChange={(e) => setTranscriptText(e.target.value)}
-            disabled={phase !== 'idle' && phase !== 'error'}
+            disabled={fieldsDisabled}
             rows={10}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono"
+            className={`${inputClass} font-mono`}
             placeholder="Paste the raw meeting transcript here…"
           />
         </div>
 
-        {error && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+        {error && <ErrorBanner message={error} />}
 
-        {phase === 'saving' && (
-          <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-            Saving meeting and transcript…
-          </div>
-        )}
+        {phase === 'saving' && <InfoBanner>Saving meeting and transcript…</InfoBanner>}
         {phase === 'analysing' && (
-          <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+          <InfoBanner>
             Analysing transcript — this runs three AI agents in sequence and can take a minute…
-          </div>
+          </InfoBanner>
         )}
 
         <button
           type="submit"
           disabled={!canSubmit}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
         >
           {phase === 'saving'
             ? 'Saving…'

@@ -5,7 +5,6 @@ import {
   getProjectDashboard,
   type Action,
   type ChangeSignal,
-  type ConfidenceType,
   type Decision,
   type Dependency,
   type HealthLevel,
@@ -18,27 +17,9 @@ import {
 import { SkeletonBlock, SkeletonCard, SkeletonStat } from '../components/Skeleton';
 import AskProjectIQ from '../components/AskProjectIQ';
 import DocumentUpload from '../components/DocumentUpload';
-
-const HEALTH_STYLES: Record<HealthLevel, string> = {
-  green: 'bg-green-100 text-green-800 border-green-300',
-  amber: 'bg-amber-100 text-amber-800 border-amber-300',
-  red: 'bg-red-100 text-red-800 border-red-300',
-};
-
-const HEALTH_LABELS: Record<HealthLevel, string> = { green: 'Green', amber: 'Amber', red: 'Red' };
-
-const SEVERITY_STYLES: Record<string, string> = {
-  low: 'bg-green-100 text-green-800 border-green-300',
-  medium: 'bg-amber-100 text-amber-800 border-amber-300',
-  high: 'bg-orange-100 text-orange-800 border-orange-300',
-  critical: 'bg-red-100 text-red-800 border-red-300',
-};
-
-const CONFIDENCE_STYLES: Record<ConfidenceType, string> = {
-  fact: 'bg-green-100 text-green-800 border-green-300',
-  inference: 'bg-amber-100 text-amber-800 border-amber-300',
-  recommendation: 'bg-blue-100 text-blue-800 border-blue-300',
-};
+import { Card as CardShell, CardTitle } from '../components/ui/Card';
+import { ErrorBanner } from '../components/ui/StatusBanner';
+import { Badge, ConfidenceBadge, HealthBadge, SeverityBadge } from '../components/ui/Badge';
 
 const INTELLIGENCE_TYPE_LABELS: Record<IntelligenceFeedItem['type'], string> = {
   action: 'Action',
@@ -60,54 +41,49 @@ const FEED_TYPE_TO_RECORD_TYPE: Record<IntelligenceFeedItem['type'], RecordType>
   change_signal: 'change-signals',
 };
 
-function Badge({ text, className }: { text: string; className: string }) {
-  return (
-    <span
-      className={`rounded border px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide ${className}`}
-    >
-      {text}
-    </span>
-  );
-}
+const HEALTH_BORDER: Record<HealthLevel, string> = {
+  green: 'border-l-green-500',
+  amber: 'border-l-amber-500',
+  red: 'border-l-red-500',
+};
 
-function HealthBadge({ level }: { level: HealthLevel }) {
-  return <Badge text={HEALTH_LABELS[level]} className={HEALTH_STYLES[level]} />;
-}
-
-function SeverityBadge({ severity }: { severity: string | null }) {
-  if (!severity) return null;
-  return <Badge text={severity} className={SEVERITY_STYLES[severity] ?? ''} />;
-}
-
-function ConfidenceBadge({ type }: { type: ConfidenceType | null }) {
-  if (!type) return null;
-  return <Badge text={type} className={CONFIDENCE_STYLES[type]} />;
-}
-
-function Card({
-  title,
-  linkTo,
-  children,
-}: {
-  title: string;
-  linkTo?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-        {linkTo ? (
-          <Link to={linkTo} className="hover:text-slate-700 hover:underline">
-            {title}
-          </Link>
-        ) : (
-          title
-        )}
-      </h3>
-      <div className="mt-3">{children}</div>
-    </div>
-  );
-}
+// Small hand-authored inline SVGs — no icon library added for a handful of glyphs.
+const ICONS = {
+  overdue: (
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <circle cx="10" cy="10" r="7.5" />
+      <path d="M10 6v4l2.5 2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  risk: (
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M10 3l7.5 13H2.5L10 3z" strokeLinejoin="round" />
+      <path d="M10 8.5v3" strokeLinecap="round" />
+      <circle cx="10" cy="14" r="0.6" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  decision: (
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M4 10l4 4 8-8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  issues: (
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <rect x="3" y="3" width="14" height="14" rx="2" />
+      <path d="M7 8h6M7 12h4" strokeLinecap="round" />
+    </svg>
+  ),
+  change: (
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M4 6h9l-2.5-2.5M16 14H7l2.5 2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  feed: (
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M3 5h14M3 10h14M3 15h9" strokeLinecap="round" />
+    </svg>
+  ),
+};
 
 function EmptyState({ text }: { text: string }) {
   return <p className="text-sm text-slate-400">{text}</p>;
@@ -115,7 +91,7 @@ function EmptyState({ text }: { text: string }) {
 
 function SubHealthCard({ label, level }: { label: string; level: HealthLevel }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div className={`rounded-lg border border-l-4 border-slate-200 bg-white p-4 shadow-sm ${HEALTH_BORDER[level]}`}>
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
       <div className="mt-2">
         <HealthBadge level={level} />
@@ -159,9 +135,7 @@ function TopRisksList({ risks }: { risks: Risk[] }) {
             <p className="text-slate-800">{r.description}</p>
             <div className="flex shrink-0 items-center gap-1">
               <SeverityBadge severity={r.severity} />
-              {r.previous_severity && (
-                <Badge text="worsened" className="bg-red-100 text-red-800 border-red-300" />
-              )}
+              {r.previous_severity && <Badge text="worsened" tone="red" />}
             </div>
           </div>
           <p className="mt-0.5 text-xs text-slate-500">Owner: {r.owner ?? 'unassigned'}</p>
@@ -268,13 +242,10 @@ function IntelligenceFeed({ projectId, items }: { projectId: string; items: Inte
         <li key={`${item.type}-${item.id}`}>
           <Link
             to={`/projects/${projectId}/${FEED_TYPE_TO_RECORD_TYPE[item.type]}`}
-            className="flex items-start justify-between gap-3 py-2.5 hover:bg-slate-50"
+            className="flex items-start justify-between gap-3 py-2.5 transition-colors hover:bg-slate-50"
           >
             <div className="flex items-start gap-2">
-              <Badge
-                text={INTELLIGENCE_TYPE_LABELS[item.type]}
-                className="bg-slate-100 text-slate-600 border-slate-300"
-              />
+              <Badge text={INTELLIGENCE_TYPE_LABELS[item.type]} tone="slate" />
               <p className="text-sm text-slate-800">{item.text}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -292,8 +263,8 @@ function IntelligenceFeed({ projectId, items }: { projectId: string; items: Inte
 
 function DashboardSkeleton() {
   return (
-    <div className="mx-auto max-w-5xl px-6 py-10">
-      <div className="flex items-start justify-between gap-4">
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+      <div className="flex flex-col justify-between gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center">
         <div className="space-y-2">
           <SkeletonBlock className="h-6 w-56" />
           <SkeletonBlock className="h-4 w-40" />
@@ -312,7 +283,7 @@ function DashboardSkeleton() {
         <SkeletonStat />
         <SkeletonStat />
       </div>
-      <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <SkeletonCard />
         <SkeletonCard />
         <SkeletonCard />
@@ -346,37 +317,38 @@ export default function ProjectDashboard() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    document.title = data ? `ProjectIQ · ${data.project.name}` : 'ProjectIQ · Dashboard';
+  }, [data]);
+
   if (loading) return <DashboardSkeleton />;
 
   if (error) {
     return (
-      <div className="mx-auto max-w-5xl px-6 py-10">
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          <p>{error}</p>
-          <button
-            onClick={load}
-            className="mt-2 rounded border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
-          >
-            Retry
-          </button>
-        </div>
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+        <ErrorBanner message={error} onRetry={load} />
       </div>
     );
   }
   if (!data || !id) return null;
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-10">
-      <div className="flex items-start justify-between gap-4">
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+      {/* Hero — the "executive health view at a glance" the Overall Health
+          number leads with: health-tinted border + larger badge, project
+          identity secondary. */}
+      <div
+        className={`rounded-lg border border-l-4 bg-white p-5 shadow-sm ${HEALTH_BORDER[data.project.health]} flex flex-col justify-between gap-4 sm:flex-row sm:items-center`}
+      >
         <div>
-          <h2 className="text-xl font-semibold text-slate-900">{data.project.name}</h2>
+          <h2 className="text-xl font-semibold text-slate-900 sm:text-2xl">{data.project.name}</h2>
           <p className="mt-1 text-sm text-slate-500">
             {data.project.status} · {data.project.start_date ?? '?'} → {data.project.target_date ?? '?'}
           </p>
         </div>
-        <div className="text-right">
+        <div className="sm:text-right">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Overall Health</p>
-          <div className="mt-1">
+          <div className="mt-1.5">
             <HealthBadge level={data.project.health} />
           </div>
         </div>
@@ -414,41 +386,60 @@ export default function ProjectDashboard() {
         </div>
       </section>
 
-      <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card
-          title={`Overdue Actions (${data.overdue_actions.length})`}
-          linkTo={`/projects/${id}/actions?view=overdue`}
-        >
-          <OverdueActionsList actions={data.overdue_actions} />
-        </Card>
-        <Card title={`Top Risks (${data.top_risks.length})`} linkTo={`/projects/${id}/risks?view=top`}>
-          <TopRisksList risks={data.top_risks} />
-        </Card>
-        <Card
-          title={`Decisions Needing Attention (${data.decisions_needing_attention.length})`}
-          linkTo={`/projects/${id}/decisions?view=pending`}
-        >
-          <DecisionsList decisions={data.decisions_needing_attention} />
-        </Card>
-        <Card title="Issues & Dependencies">
-          <IssuesAndDependencies
-            projectId={id}
-            issues={data.open_issues}
-            dependencies={data.open_dependencies}
-          />
-        </Card>
-        <Card
-          title={`Change Signals (${data.change_signals.length})`}
-          linkTo={`/projects/${id}/change-signals?view=open`}
-        >
-          <ChangeSignalsList signals={data.change_signals} />
-        </Card>
+      {/* 3-column at xl so 5 cards land 3-then-2 — no card ever sits stranded
+          alone in its own row at any breakpoint. */}
+      <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <CardShell>
+          <CardTitle icon={ICONS.overdue} linkTo={`/projects/${id}/actions?view=overdue`}>
+            Overdue Actions ({data.overdue_actions.length})
+          </CardTitle>
+          <div className="mt-3">
+            <OverdueActionsList actions={data.overdue_actions} />
+          </div>
+        </CardShell>
+        <CardShell>
+          <CardTitle icon={ICONS.risk} linkTo={`/projects/${id}/risks?view=top`}>
+            Top Risks ({data.top_risks.length})
+          </CardTitle>
+          <div className="mt-3">
+            <TopRisksList risks={data.top_risks} />
+          </div>
+        </CardShell>
+        <CardShell>
+          <CardTitle icon={ICONS.decision} linkTo={`/projects/${id}/decisions?view=pending`}>
+            Decisions Needing Attention ({data.decisions_needing_attention.length})
+          </CardTitle>
+          <div className="mt-3">
+            <DecisionsList decisions={data.decisions_needing_attention} />
+          </div>
+        </CardShell>
+        <CardShell>
+          <CardTitle icon={ICONS.issues}>Issues &amp; Dependencies</CardTitle>
+          <div className="mt-3">
+            <IssuesAndDependencies
+              projectId={id}
+              issues={data.open_issues}
+              dependencies={data.open_dependencies}
+            />
+          </div>
+        </CardShell>
+        <CardShell>
+          <CardTitle icon={ICONS.change} linkTo={`/projects/${id}/change-signals?view=open`}>
+            Change Signals ({data.change_signals.length})
+          </CardTitle>
+          <div className="mt-3">
+            <ChangeSignalsList signals={data.change_signals} />
+          </div>
+        </CardShell>
       </div>
 
       <div className="mt-8">
-        <Card title="Recent Project Intelligence">
-          <IntelligenceFeed projectId={id} items={data.recent_intelligence} />
-        </Card>
+        <CardShell>
+          <CardTitle icon={ICONS.feed}>Recent Project Intelligence</CardTitle>
+          <div className="mt-3">
+            <IntelligenceFeed projectId={id} items={data.recent_intelligence} />
+          </div>
+        </CardShell>
       </div>
     </div>
   );
