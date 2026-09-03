@@ -17,5 +17,5 @@ export const weeklyReportSchema = z.object({
 
 export const projectQuerySchema = z.object({
   project_id: z.string().uuid(),
-  question: z.string().min(1),
+  question: z.string().min(1).max(2000, 'Question is too long (2,000 character limit)'),
 });

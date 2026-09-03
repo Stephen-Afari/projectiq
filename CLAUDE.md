@@ -52,38 +52,95 @@ TypeScript across `frontend/` and `backend/`.
 - Small, focused commits; no dead code, no commented-out blocks.
 
 ## Security Rules
-- Secrets only via env vars (`.env`, never committed — already gitignored).
-  Never hardcode keys, never log full API responses containing secrets.
+Hardened 2026-09-02 — see
+`docs/decision-log/2026-09-02-security-hardening.md` for the full gap
+list this closed and live verification evidence (including a two-org
+isolation demonstration). The rules below describe what's actually
+implemented, not aspiration.
+
+- Secrets only via env vars (`.env`, never committed — already gitignored,
+  confirmed untracked). Never hardcode keys, never log full API responses
+  containing secrets. `VITE_`-prefixed duplicates of `SUPABASE_URL`/
+  `SUPABASE_ANON_KEY` exist for the frontend bundle — the anon key is
+  meant to be public, that's what RLS is for; never add a `VITE_`-prefixed
+  service-role or Anthropic key.
+- **Every non-webhook, non-health API route requires a verified Supabase
+  Auth session.** `backend/src/middleware/requireAuth.ts` reads
+  `Authorization: Bearer <token>`, verifies it via
+  `supabase.auth.getUser(token)`, and looks up the matching `public.users`
+  row to attach `req.user = { id, organisationId, role, email }`. 401 if
+  the token is missing/invalid; 403 if the Supabase Auth account has no
+  `public.users` row (no org membership). Applied per-router in
+  `backend/src/index.ts`; only `healthRouter` (liveness) and
+  `webhooksRouter` (n8n's own shared-secret auth, see below) are exempt.
+- **Authorization is enforced in the API layer, not RLS** — the backend
+  always uses the service-role key (see below), which bypasses RLS
+  entirely, so RLS is defense-in-depth, not the enforcement point.
+  `backend/src/lib/orgAccess.ts`'s `assertProjectAccess(projectId,
+  organisationId)` 404s (not 403 — avoids confirming another org's
+  project exists) if a project is missing *or* belongs to a different
+  org; `loadProjectInOrg` is the same check as Express middleware for
+  `projects.ts`'s `/:id/*` routes. Every route that reaches an entity via
+  an id (actions/risks/issues/decisions/dependencies/change_signals,
+  meetings, the AI endpoints) calls this against the entity's
+  `project_id` before reading or writing it — `req.user.organisationId`
+  comes from the verified session, never from client input, so it can't
+  be spoofed. `approved_by` on every approval PATCH is likewise always
+  `req.user.id`, never a client-supplied value (the request schema
+  doesn't even accept one) — see AI Rules / API Conventions.
 - All webhooks (n8n → API, API → n8n) must verify a signature/secret
   (`N8N_WEBHOOK_SECRET`); reject unsigned or mismatched requests. First
   real instance: `POST /api/webhooks/n8n/meetings`
   (`backend/src/middleware/verifyWebhookSecret.ts`, header
   `X-N8N-Webhook-Secret`) — a dedicated route, not a reuse of the
-  frontend's unauthenticated `POST /api/meetings`, since external traffic
-  is a different trust boundary. Internal calls the frontend already makes
-  unauthenticated (e.g. `POST /api/ai/analyse-meeting`) are a deliberate,
-  documented exception, not silently exempted — see
-  `docs/decision-log/2026-08-28-n8n-meeting-ingestion.md`.
-- External-facing webhook routes are rate-limited
-  (`backend/src/middleware/webhookRateLimit.ts`, `express-rate-limit`),
-  scoped to just those routes — not applied globally.
+  frontend's `POST /api/meetings` (which now requires a user session like
+  everything else), since external traffic is a different trust boundary.
 - **API → n8n direction**: `backend/src/services/approvalEvents.ts` POSTs
   to `N8N_APPROVAL_WEBHOOK_URL` with the `X-N8N-Webhook-Secret` header
   (same shared secret, other direction) whenever an item's
-  `approval_status` becomes `'approved'` — first real use of the "API →
-  n8n" half of the webhook-signing rule above (the n8n → API half was
-  already covered by the ingestion/analysis endpoints). Best-effort: 5s
-  timeout, errors logged not thrown, skipped silently if the env var is
-  unset — a human's approval action must always succeed regardless of
-  whether n8n is reachable.
+  `approval_status` becomes `'approved'`. Best-effort: 5s timeout, errors
+  logged not thrown, skipped silently if the env var is unset — a human's
+  approval action must always succeed regardless of whether n8n is
+  reachable.
+- **Rate limiting**: `backend/src/middleware/apiRateLimit.ts` (300
+  req/15min per IP) applies to all of `/api`; `backend/src/middleware/
+  aiRateLimit.ts` (20 req/15min, keyed by `req.user.id`) additionally
+  applies to `/api/ai/*` given the real Claude-API cost/DoS exposure
+  there; `backend/src/middleware/webhookRateLimit.ts` (30 req/5min per
+  IP) still applies to just the two n8n webhook routes, layered on top of
+  the general limit, unchanged from before.
+- **CORS**: `cors({ origin: config.frontendBaseUrl })` — only the
+  configured frontend origin. Previously `cors()` with no options
+  reflected any origin.
 - Validate every external input (API payloads, webhook bodies, transcript
   uploads) at the boundary before it touches business logic or the DB.
+  Free-text fields fed to the LLM carry explicit length caps, not just
+  Express's incidental body-size default: `transcript_text`/`transcript`
+  max 200,000 characters (`schemas/meetings.ts`, `schemas/webhooks.ts`),
+  `question` max 2,000 characters (`schemas/ai.ts`);
+  `express.json({ limit: '1mb' })` is explicit, not the implicit default.
 - Supabase Row Level Security is mandatory on every table holding org/project
-  data — no table ships without an RLS policy and a test proving isolation.
-- Every consequential action (approve, edit, reject, push, delete) is written
-  to `audit_log` with actor, timestamp, before/after state.
+  data — no table ships without an RLS policy. Proven with a real test, not
+  just written policy: `backend/scripts/test-rls-isolation.ts`
+  (`npm run test:rls`) creates/reuses a second organisation + Supabase
+  Auth user, signs in with the **anon key** as each of two different
+  orgs' users, and confirms neither can read the other's project via a
+  direct Supabase query (bypassing the Express API entirely) — the
+  scenario RLS actually exists to protect, since the backend's own
+  service-role key bypasses it.
+- Every consequential action (approve, edit, reject, report generation) is
+  written to `audit_log` (`organisation_id`, `actor_id`, `action`,
+  `resource_type`, `resource_id`, `before_state`, `after_state`,
+  `created_at`; RLS-scoped like every other table). Approve/reject writes
+  come from the single `updateApprovalStatus` funnel
+  (`backend/src/db/queryTable.ts`) so audit coverage can't be forgotten
+  per-route; edits and weekly-report generation write from their own
+  routes. See AI Rules for the full list of write points.
 - Service-role Supabase key is backend-only, never exposed to the frontend or
-  committed; frontend uses the anon key + RLS.
+  committed; frontend uses the anon key + RLS (`frontend/src/lib/
+  supabaseClient.ts`, auth only — the frontend never queries application
+  tables directly with it; all data access still goes through the Express
+  API, which verifies the session server-side).
 
 ## Database Conventions
 - All tables scoped by `organisation_id` (and `project_id` where applicable);
@@ -169,9 +226,11 @@ TypeScript across `frontend/` and `backend/`.
 - **Two separate PATCH routes per extracted-entity resource, kept
   deliberately distinct**:
   - `PATCH /api/<resource>/:id` — approval only. Accepts exactly
-    `{ approval_status: 'approved' | 'rejected', approved_by: <user id> }`,
-    mirrors the DB-layer rule (`updateApprovalStatus`). No content field is
-    ever touched by this route.
+    `{ approval_status: 'approved' | 'rejected' }` — `approved_by` is
+    **not** accepted from the client; it's always `req.user.id` from the
+    verified session (see Security Rules), mirrors the DB-layer rule
+    (`updateApprovalStatus`). No content field is ever touched by this
+    route.
   - `PATCH /api/<resource>/:id/edit` — content only. Accepts a partial
     body of that resource's editable fields (+ `confidence_type`, since
     correcting a mislabeled fact/inference is exactly what human review is
@@ -186,8 +245,10 @@ TypeScript across `frontend/` and `backend/`.
     existed from Phase 2 but were never wired up).
 - AI endpoints: `POST /api/ai/analyse-meeting` (real), `POST
   /api/ai/weekly-report` (real), `POST /api/ai/project-query` (real —
-  Project Assistant Q&A; see AI Rules). All unauthenticated, same trust
-  boundary as the rest of `/api/ai`.
+  Project Assistant Q&A; see AI Rules). All require a verified session
+  (`requireAuth`) and org-scope their `project_id`/`meeting_id` via
+  `assertProjectAccess`; `/api/ai/*` additionally carries the stricter
+  per-user `aiRateLimit` (see Security Rules).
 - `POST /api/ai/project-query` — `{ project_id, question }` → `{ project,
   question, answer: [{ text, confidence_type, citations }], data_gap }`.
   Gathers the project's approved actions/risks/issues/dependencies/
@@ -199,10 +260,13 @@ TypeScript across `frontend/` and `backend/`.
   `502` if the agent fails validation after retries. Every citation is
   re-validated against the actual ids handed to the model before the
   response is sent — see AI Rules.
-- `GET /api/users` — unscoped list, same placeholder rationale as `GET
-  /api/projects`: no auth/org session on the frontend yet. Backs the
-  review screen's "Reviewing as" picker, standing in for real
-  `approved_by` provenance until Auth ships. Not built as if permanent.
+- `GET /api/users` — scoped to `req.user.organisationId`
+  (`listUsersByOrganisation`). Previously unscoped (returned every user
+  across every org); the review screen's old "Reviewing as" picker that
+  consumed this is gone now that `approved_by` comes from the session
+  (see Security Rules) — this endpoint remains for any future
+  org-member-facing UI (e.g. an assignee picker), but nothing calls it
+  today.
 - Seeding demo users: since `users.id references auth.users(id)`, seed
   scripts must create real Supabase Auth accounts via
   `supabase.auth.admin.createUser` (service-role client), not fabricated
@@ -288,8 +352,9 @@ TypeScript across `frontend/` and `backend/`.
 ## Ingestion Conventions
 - Meetings can be created two ways, sharing one service function
   (`createMeetingWithTranscript`, `backend/src/services/meetingIngestion.ts`):
-  the frontend's `POST /api/meetings` (no auth, same-origin) and n8n's
-  `POST /api/webhooks/n8n/meetings` (secret-verified, external). Both do
+  the frontend's `POST /api/meetings` (session-authenticated, same as
+  every other non-webhook route) and n8n's `POST /api/webhooks/n8n/meetings`
+  (secret-verified, external). Both do
   the same project-lookup + create + transcript-upload sequence — don't
   duplicate that logic in a third place; extend the shared service instead.
 - Raw meeting transcript text is stored in a private Supabase Storage
@@ -369,6 +434,16 @@ TypeScript across `frontend/` and `backend/`.
   the fetch call). The header carries a small static nav (`New Meeting` /
   `Projects`) — the first cross-screen navigation in the app, added
   because nothing linked into `/projects/:id` otherwise.
+- **Auth gate**: `frontend/src/lib/authContext.tsx` (`AuthProvider`/
+  `useAuth`) tracks the Supabase Auth session (`onAuthStateChange`) and
+  mirrors its access token into `lib/api.ts`'s module-level
+  `setAccessToken`, so `request()` attaches `Authorization: Bearer
+  <token>` on every call without threading auth through props/hooks at
+  each call site. `App.tsx` renders `frontend/src/pages/Login.tsx`
+  (email/password only — no signup/reset; demo users come from
+  `backend/scripts/seed.ts`) whenever there's no session, otherwise the
+  normal app shell + routes, with a sign-out control in the header. See
+  Security Rules.
 - `frontend/src/components/` (new directory) — `Skeleton.tsx` exports
   `SkeletonBlock`/`SkeletonCard`/`SkeletonStat`, shared by
   `ProjectDashboard`/`ProjectRecords`/`ProjectList` (three consumers
@@ -596,17 +671,72 @@ TypeScript across `frontend/` and `backend/`.
   - See `docs/decision-log/2026-09-05-ai-project-assistant.md`.
 
 ## Testing Rules
-- Every zod schema has unit tests covering valid and invalid shapes.
-- Every agent has unit tests with fixed synthetic transcript fixtures
-  (Apex Manufacturing) asserting on structured output shape and
-  FACT/INFERENCE/RECOMMENDATION tagging, not on exact prose.
-- Every RLS policy has a test proving cross-org isolation.
-- The approval pipeline (draft → review → approve → live → audit_log) has an
-  integration test covering the golden path and a rejection path.
-- Golden-path e2e (transcript in → dashboard reflects approved data) covered
-  before Phase 10 sign-off.
-- Test folders (`frontend`/`backend` unit tests, integration, e2e) are added
-  when the first real test is written, not scaffolded empty ahead of need.
+First real suite added 2026-09-03 — see
+`docs/decision-log/2026-09-03-automated-test-suite.md` for full coverage
+detail and design rationale. `backend/tests/` (Vitest + supertest), run
+via `npm test` (root, forwards to the backend workspace) or
+`npm run test:watch` from `backend/` during development.
+- **Fully offline and deterministic — no real Supabase, no real Claude,
+  no network calls, ever.** Every agent's only seam to the Anthropic SDK
+  is `llmClient.generateStructured` (`backend/src/services/llm/index.ts`)
+  — mocking that one function is sufficient to control any agent's output
+  deterministically, including simulating an invalid-JSON-then-valid
+  sequence to exercise the repair loop. Route tests mock
+  `backend/src/db/index.js` (every route imports only named functions
+  from this one barrel — confirmed structurally clean to mock per file)
+  and `backend/src/middleware/requireAuth.js` (stubbed to set `req.user`
+  directly for route tests; `requireAuth`'s own 401/403/success logic
+  gets a dedicated unit test that mocks only `db/client.js`'s
+  `supabase.auth.getUser` and `db/index.js`'s `getUserById`, so its real
+  behavior is verified somewhere rather than perpetually stubbed away).
+  New tests must follow this same no-network convention — if a test
+  needs a real Supabase/Claude call, that's a signal it should be a
+  targeted script (like `test:rls`) instead of part of the Vitest suite.
+- `backend/src/app.ts` exports the Express `app` separately from
+  `index.ts`'s `.listen()` call specifically so tests can drive it with
+  supertest without opening a real port — keep this split; don't move
+  routing back into `index.ts`.
+- Every zod schema is exercised for valid/invalid shapes indirectly via
+  route validation-error tests (e.g. `tests/routes/actions.test.ts`
+  asserting `400` + `error.details` on a missing required field);
+  schema-only unit tests can be added directly under `tests/schemas/`
+  if a schema's validation logic gets complex enough to warrant it in
+  isolation.
+- The Meeting Analyst agent has a dedicated test
+  (`tests/agents/meetingAnalyst.test.ts`) proving three things from a
+  mocked Claude response: a valid response produces schema-valid items
+  with correct FACT/INFERENCE/RECOMMENDATION tags; an invalid-then-valid
+  sequence proves the repair loop actually retries and recovers
+  (`attempts: 2`); an always-invalid sequence fails gracefully
+  (`validationPassed: false`, no thrown exception) rather than crashing
+  the caller.
+- **The approval gate has three separate, precise tests rather than one
+  end-to-end test**: `tests/db/updateApprovalStatus.test.ts` proves the
+  downstream automation event never fires for `'rejected'` (only
+  `'approved'`) at the single funnel point all six entities share;
+  `tests/lib/projectAlerts.test.ts` proves pending/rejected rows are
+  excluded from alert aggregation; `tests/routes/projects.test.ts`'s
+  dashboard suite proves the same for the dashboard endpoint using a
+  fixed, hand-picked fixture (not the live Apex seed data — deliberately,
+  so counts stay exact and stable forever, documented as a stated design
+  choice in the decision log) and includes a before/after comparison
+  showing dashboard counts change when a fixture item's
+  `approval_status` flips from pending to approved.
+- Webhook auth (`verifyWebhookSecret`) has both a direct unit test and a
+  supertest-level test against the real `webhooksRouter` confirming both
+  webhook routes reject missing/wrong secrets and accept the correct one.
+- `approved_by`/audit actor tests assert the value used server-side
+  matches the authenticated session (`req.user.id`), never a
+  client-supplied value in the request body — directly exercises the
+  2026-09-02 security hardening, not just generic CRUD behavior.
+- RLS cross-org isolation is proven by `backend/scripts/test-rls-isolation.ts`
+  (`npm run test:rls`, see Security Rules) — a live-Supabase check, kept
+  deliberately separate from the offline Vitest suite rather than folded
+  into it, since it needs a real anon-key session against a real database
+  to mean anything.
+- Test folders are added when the first real test is written, not
+  scaffolded empty ahead of need — this is how `backend/tests/` came to
+  exist now rather than earlier.
 
 ## Documentation Rules
 - Every prompt/session that changes scope, architecture, schema, or a

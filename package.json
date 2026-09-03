@@ -17,7 +17,8 @@
     "db:migrate": "node scripts/apply-migrations.mjs",
     "db:verify": "node scripts/verify-schema.mjs",
     "seed": "npm run seed --workspace=backend",
-    "setup:storage": "npm run setup:storage --workspace=backend"
+    "setup:storage": "npm run setup:storage --workspace=backend",
+    "test:rls": "npm run test:rls --workspace=backend"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.18.0",

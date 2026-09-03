@@ -5,7 +5,13 @@ import { editIssueSchema } from '../schemas/issues.js';
 import { patchApprovalStatusSchema } from '../schemas/common.js';
 import { ApiError } from '../lib/ApiError.js';
 import { requireId } from '../lib/requireId.js';
-import { getIssueById, updateIssueApprovalStatus, updateIssueFields } from '../db/index.js';
+import { assertProjectAccess } from '../lib/orgAccess.js';
+import {
+  createAuditLogEntry,
+  getIssueById,
+  updateIssueApprovalStatus,
+  updateIssueFields,
+} from '../db/index.js';
 
 export const issuesRouter = Router();
 
@@ -16,8 +22,14 @@ issuesRouter.patch(
     const id = requireId(req.params.id);
     const existing = await getIssueById(id);
     if (!existing) throw new ApiError(404, 'Issue not found');
-    const { approval_status, approved_by } = req.body;
-    const updated = await updateIssueApprovalStatus(id, approval_status, approved_by);
+    await assertProjectAccess(existing.project_id, req.user!.organisationId);
+
+    const updated = await updateIssueApprovalStatus(id, req.body.approval_status, {
+      actorId: req.user!.id,
+      organisationId: req.user!.organisationId,
+      resourceType: 'issues',
+      beforeState: existing,
+    });
     res.json(updated);
   }),
 );
@@ -29,7 +41,18 @@ issuesRouter.patch(
     const id = requireId(req.params.id);
     const existing = await getIssueById(id);
     if (!existing) throw new ApiError(404, 'Issue not found');
+    await assertProjectAccess(existing.project_id, req.user!.organisationId);
+
     const updated = await updateIssueFields(id, req.body);
+    await createAuditLogEntry({
+      organisation_id: req.user!.organisationId,
+      actor_id: req.user!.id,
+      action: 'edit',
+      resource_type: 'issues',
+      resource_id: id,
+      before_state: existing,
+      after_state: updated,
+    });
     res.json(updated);
   }),
 );

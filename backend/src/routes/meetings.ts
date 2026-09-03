@@ -4,6 +4,7 @@ import { validateBody } from '../middleware/validateBody.js';
 import { createMeetingSchema } from '../schemas/meetings.js';
 import { ApiError } from '../lib/ApiError.js';
 import { requireId } from '../lib/requireId.js';
+import { assertProjectAccess } from '../lib/orgAccess.js';
 import {
   getMeetingById,
   listActionsByMeeting,
@@ -21,6 +22,7 @@ meetingsRouter.post(
   '/',
   validateBody(createMeetingSchema),
   asyncHandler(async (req, res) => {
+    await assertProjectAccess(req.body.project_id, req.user!.organisationId);
     const meeting = await createMeetingWithTranscript(req.body);
     res.status(201).json(meeting);
   }),
@@ -32,6 +34,7 @@ meetingsRouter.get(
     const id = requireId(req.params.id);
     const meeting = await getMeetingById(id);
     if (!meeting) throw new ApiError(404, 'Meeting not found');
+    await assertProjectAccess(meeting.project_id, req.user!.organisationId);
     res.json(meeting);
   }),
 );
@@ -42,6 +45,7 @@ meetingsRouter.get(
     const id = requireId(req.params.id);
     const meeting = await getMeetingById(id);
     if (!meeting) throw new ApiError(404, 'Meeting not found');
+    await assertProjectAccess(meeting.project_id, req.user!.organisationId);
 
     const [actions, risks, issues, decisions, dependencies, changeSignals] = await Promise.all([
       listActionsByMeeting(id),

@@ -5,7 +5,14 @@ import { createRiskSchema, editRiskSchema } from '../schemas/risks.js';
 import { patchApprovalStatusSchema } from '../schemas/common.js';
 import { ApiError } from '../lib/ApiError.js';
 import { requireId } from '../lib/requireId.js';
-import { createRisk, getRiskById, updateRiskApprovalStatus, updateRiskFields } from '../db/index.js';
+import { assertProjectAccess } from '../lib/orgAccess.js';
+import {
+  createAuditLogEntry,
+  createRisk,
+  getRiskById,
+  updateRiskApprovalStatus,
+  updateRiskFields,
+} from '../db/index.js';
 import type { RiskSeverity } from '../db/index.js';
 
 export const risksRouter = Router();
@@ -16,6 +23,7 @@ risksRouter.post(
   '/',
   validateBody(createRiskSchema),
   asyncHandler(async (req, res) => {
+    await assertProjectAccess(req.body.project_id, req.user!.organisationId);
     const risk = await createRisk(req.body);
     res.status(201).json(risk);
   }),
@@ -28,8 +36,14 @@ risksRouter.patch(
     const id = requireId(req.params.id);
     const existing = await getRiskById(id);
     if (!existing) throw new ApiError(404, 'Risk not found');
-    const { approval_status, approved_by } = req.body;
-    const updated = await updateRiskApprovalStatus(id, approval_status, approved_by);
+    await assertProjectAccess(existing.project_id, req.user!.organisationId);
+
+    const updated = await updateRiskApprovalStatus(id, req.body.approval_status, {
+      actorId: req.user!.id,
+      organisationId: req.user!.organisationId,
+      resourceType: 'risks',
+      beforeState: existing,
+    });
     res.json(updated);
   }),
 );
@@ -41,6 +55,7 @@ risksRouter.patch(
     const id = requireId(req.params.id);
     const existing = await getRiskById(id);
     if (!existing) throw new ApiError(404, 'Risk not found');
+    await assertProjectAccess(existing.project_id, req.user!.organisationId);
 
     const patch = { ...req.body };
     const newSeverity: RiskSeverity | undefined = req.body.severity;
@@ -60,6 +75,15 @@ risksRouter.patch(
     }
 
     const updated = await updateRiskFields(id, patch);
+    await createAuditLogEntry({
+      organisation_id: req.user!.organisationId,
+      actor_id: req.user!.id,
+      action: 'edit',
+      resource_type: 'risks',
+      resource_id: id,
+      before_state: existing,
+      after_state: updated,
+    });
     res.json(updated);
   }),
 );

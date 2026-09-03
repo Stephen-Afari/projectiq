@@ -1,4 +1,11 @@
-import { insertRow, selectByColumn, selectById, updateApprovalStatus, updateRow } from '../queryTable.js';
+import {
+  insertRow,
+  selectByColumn,
+  selectById,
+  updateApprovalStatus,
+  updateRow,
+  type ApprovalAuditContext,
+} from '../queryTable.js';
 import type { ChangeSignal, ChangeSignalStatus } from '../types.js';
 
 const TABLE = 'change_signals';
@@ -33,9 +40,9 @@ export async function createChangeSignal(input: {
 export async function updateChangeSignalApprovalStatus(
   id: string,
   status: 'approved' | 'rejected',
-  approvedBy: string,
+  context: ApprovalAuditContext,
 ): Promise<ChangeSignal> {
-  return updateApprovalStatus<ChangeSignal>(TABLE, id, status, approvedBy);
+  return updateApprovalStatus<ChangeSignal>(TABLE, id, status, context);
 }
 
 export async function updateChangeSignalFields(

@@ -1,5 +1,6 @@
 import { supabase } from './client.js';
 import { emitApprovalEvent } from '../services/approvalEvents.js';
+import { createAuditLogEntry } from './tables/auditLog.js';
 
 /**
  * Thin, typed wrapper around the repeated select/insert/update pattern used
@@ -45,21 +46,43 @@ export async function updateRow<T>(
   return data as T;
 }
 
+export interface ApprovalAuditContext {
+  actorId: string;
+  organisationId: string;
+  resourceType: string;
+  beforeState: unknown;
+}
+
 /**
  * Shared approval-transition helper for the six AI-extracted entity tables.
  * Per CLAUDE.md AI Rules, this is the only sanctioned way those tables move
- * out of 'pending' — callers must supply the approving user's id.
+ * out of 'pending'. `approved_by` is always the verified session actor
+ * (context.actorId) — never client-supplied, since routes now derive it
+ * from requireAuth's req.user, not request body input. Writes one
+ * audit_log row per call (before/after state) — the single funnel point
+ * for all six entities' approve/reject actions, so audit coverage can't
+ * be forgotten per-route.
  */
 export async function updateApprovalStatus<T>(
   table: string,
   id: string,
   status: 'approved' | 'rejected',
-  approvedBy: string,
+  context: ApprovalAuditContext,
 ): Promise<T> {
   const updated = await updateRow<T>(table, id, {
     approval_status: status,
-    approved_by: approvedBy,
+    approved_by: context.actorId,
     approved_at: new Date().toISOString(),
+  });
+
+  await createAuditLogEntry({
+    organisation_id: context.organisationId,
+    actor_id: context.actorId,
+    action: status,
+    resource_type: context.resourceType,
+    resource_id: id,
+    before_state: context.beforeState,
+    after_state: updated,
   });
 
   // Fires only for 'approved' — never 'pending' (unreachable via this

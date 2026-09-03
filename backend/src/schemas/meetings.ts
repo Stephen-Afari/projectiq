@@ -9,6 +9,7 @@ export const createMeetingSchema = z.object({
   summary: z.string().optional(),
   transcript_text: z
     .string()
+    .max(200_000, 'Transcript is too large (200,000 character limit)')
     .refine((s) => s.trim().length > 0, 'Transcript cannot be empty')
     .optional(),
 });

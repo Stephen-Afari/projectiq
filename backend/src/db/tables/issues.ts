@@ -1,4 +1,11 @@
-import { insertRow, selectByColumn, selectById, updateApprovalStatus, updateRow } from '../queryTable.js';
+import {
+  insertRow,
+  selectByColumn,
+  selectById,
+  updateApprovalStatus,
+  updateRow,
+  type ApprovalAuditContext,
+} from '../queryTable.js';
 import type { Issue, IssueSeverity, IssueStatus } from '../types.js';
 
 const TABLE = 'issues';
@@ -33,9 +40,9 @@ export async function createIssue(input: {
 export async function updateIssueApprovalStatus(
   id: string,
   status: 'approved' | 'rejected',
-  approvedBy: string,
+  context: ApprovalAuditContext,
 ): Promise<Issue> {
-  return updateApprovalStatus<Issue>(TABLE, id, status, approvedBy);
+  return updateApprovalStatus<Issue>(TABLE, id, status, context);
 }
 
 export async function updateIssueFields(

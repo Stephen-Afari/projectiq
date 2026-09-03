@@ -1,4 +1,11 @@
-import { insertRow, selectByColumn, selectById, updateApprovalStatus, updateRow } from '../queryTable.js';
+import {
+  insertRow,
+  selectByColumn,
+  selectById,
+  updateApprovalStatus,
+  updateRow,
+  type ApprovalAuditContext,
+} from '../queryTable.js';
 import type { Action, ActionPriority, ActionStatus } from '../types.js';
 
 const TABLE = 'actions';
@@ -34,9 +41,9 @@ export async function createAction(input: {
 export async function updateActionApprovalStatus(
   id: string,
   status: 'approved' | 'rejected',
-  approvedBy: string,
+  context: ApprovalAuditContext,
 ): Promise<Action> {
-  return updateApprovalStatus<Action>(TABLE, id, status, approvedBy);
+  return updateApprovalStatus<Action>(TABLE, id, status, context);
 }
 
 export async function updateActionFields(

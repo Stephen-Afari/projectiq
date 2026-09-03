@@ -1,4 +1,11 @@
-import { insertRow, selectByColumn, selectById, updateApprovalStatus, updateRow } from '../queryTable.js';
+import {
+  insertRow,
+  selectByColumn,
+  selectById,
+  updateApprovalStatus,
+  updateRow,
+  type ApprovalAuditContext,
+} from '../queryTable.js';
 import type { Dependency, DependencyStatus } from '../types.js';
 
 const TABLE = 'dependencies';
@@ -34,9 +41,9 @@ export async function createDependency(input: {
 export async function updateDependencyApprovalStatus(
   id: string,
   status: 'approved' | 'rejected',
-  approvedBy: string,
+  context: ApprovalAuditContext,
 ): Promise<Dependency> {
-  return updateApprovalStatus<Dependency>(TABLE, id, status, approvedBy);
+  return updateApprovalStatus<Dependency>(TABLE, id, status, context);
 }
 
 export async function updateDependencyFields(

@@ -181,10 +181,22 @@ export class ApiError extends Error {
   }
 }
 
+// Set by lib/authContext.tsx whenever the Supabase Auth session changes —
+// avoids threading the current token through every call site below.
+let accessToken: string | null = null;
+
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...init?.headers,
+    },
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
@@ -293,15 +305,18 @@ const RESOURCE_PATHS: Record<ResourceKey, string> = {
   change_signals: 'change-signals',
 };
 
+// approved_by is no longer sent — the backend derives it from the
+// authenticated session (req.user.id) so a caller can't approve
+// something as someone else. See docs/decision-log/
+// 2026-09-02-security-hardening.md.
 export function patchApproval<T>(
   resource: ResourceKey,
   id: string,
   approvalStatus: 'approved' | 'rejected',
-  approvedBy: string,
 ): Promise<T> {
   return request<T>(`/${RESOURCE_PATHS[resource]}/${id}`, {
     method: 'PATCH',
-    body: JSON.stringify({ approval_status: approvalStatus, approved_by: approvedBy }),
+    body: JSON.stringify({ approval_status: approvalStatus }),
   });
 }
 

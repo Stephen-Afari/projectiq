@@ -186,6 +186,18 @@ export interface Dependency extends EntityAuditFields {
   created_at: string;
 }
 
+export interface AuditLog {
+  id: string;
+  organisation_id: string;
+  actor_id: string | null;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  before_state: unknown;
+  after_state: unknown;
+  created_at: string;
+}
+
 export interface WeeklyReport {
   id: string;
   project_id: string;

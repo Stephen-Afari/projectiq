@@ -1,9 +1,14 @@
 import { z } from 'zod';
 
-/** Shared PATCH body for the approval-gated entity tables. */
+/**
+ * Shared PATCH body for the approval-gated entity tables. approved_by is
+ * NOT accepted here — it's derived server-side from the authenticated
+ * session (req.user.id, set by requireAuth), never from client input, so
+ * a caller can't approve something as someone else. See
+ * docs/decision-log/2026-09-02-security-hardening.md.
+ */
 export const patchApprovalStatusSchema = z.object({
   approval_status: z.enum(['approved', 'rejected']),
-  approved_by: z.string().uuid(),
 });
 
 export const confidenceTypeValues = ['fact', 'inference', 'recommendation'] as const;

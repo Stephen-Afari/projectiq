@@ -1,4 +1,11 @@
-import { insertRow, selectByColumn, selectById, updateApprovalStatus, updateRow } from '../queryTable.js';
+import {
+  insertRow,
+  selectByColumn,
+  selectById,
+  updateApprovalStatus,
+  updateRow,
+  type ApprovalAuditContext,
+} from '../queryTable.js';
 import type { Risk, RiskImpact, RiskProbability, RiskSeverity, RiskStatus } from '../types.js';
 
 const TABLE = 'risks';
@@ -37,9 +44,9 @@ export async function createRisk(input: {
 export async function updateRiskApprovalStatus(
   id: string,
   status: 'approved' | 'rejected',
-  approvedBy: string,
+  context: ApprovalAuditContext,
 ): Promise<Risk> {
-  return updateApprovalStatus<Risk>(TABLE, id, status, approvedBy);
+  return updateApprovalStatus<Risk>(TABLE, id, status, context);
 }
 
 export async function updateRiskFields(

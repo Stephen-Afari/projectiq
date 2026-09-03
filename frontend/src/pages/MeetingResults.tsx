@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom';
 import {
   ApiError,
   getMeetingResults,
-  listUsers,
   patchApproval,
   patchEdit,
   type ConfidenceType,
@@ -11,7 +10,6 @@ import {
   type ImpactAssessment,
   type MeetingResults as MeetingResultsData,
   type ResourceKey,
-  type User,
 } from '../lib/api';
 
 type EntityRecord = Record<string, unknown> & {
@@ -195,14 +193,12 @@ function ItemCard({
   resource,
   titleField,
   fields,
-  reviewerId,
   onUpdated,
 }: {
   item: EntityRecord;
   resource: ResourceKey;
   titleField: string;
   fields: FieldConfig[];
-  reviewerId: string;
   onUpdated: (updated: EntityRecord) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -213,14 +209,12 @@ function ItemCard({
   const isPending = item.approval_status === 'pending';
 
   async function approve(status: 'approved' | 'rejected') {
-    if (!reviewerId) {
-      setError('Select a reviewer above first');
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
-      const updated = await patchApproval<EntityRecord>(resource, item.id, status, reviewerId);
+      // approved_by is derived server-side from the logged-in session —
+      // no reviewer picker needed, you approve as yourself.
+      const updated = await patchApproval<EntityRecord>(resource, item.id, status);
       onUpdated(updated);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to update');
@@ -326,7 +320,6 @@ function Section({
   resource,
   titleField,
   fields,
-  reviewerId,
   onUpdated,
 }: {
   title: string;
@@ -334,7 +327,6 @@ function Section({
   resource: ResourceKey;
   titleField: string;
   fields: FieldConfig[];
-  reviewerId: string;
   onUpdated: (updated: EntityRecord) => void;
 }) {
   const pending = items.filter((i) => i.approval_status === 'pending');
@@ -358,7 +350,6 @@ function Section({
                   resource={resource}
                   titleField={titleField}
                   fields={fields}
-                  reviewerId={reviewerId}
                   onUpdated={onUpdated}
                 />
               ))}
@@ -377,7 +368,6 @@ function Section({
                     resource={resource}
                     titleField={titleField}
                     fields={fields}
-                    reviewerId={reviewerId}
                     onUpdated={onUpdated}
                   />
                 ))}
@@ -393,8 +383,6 @@ function Section({
 export default function MeetingResults() {
   const { meetingId } = useParams<{ meetingId: string }>();
   const [data, setData] = useState<MeetingResultsData | null>(null);
-  const [users, setUsers] = useState<User[]>([]);
-  const [reviewerId, setReviewerId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -402,12 +390,8 @@ export default function MeetingResults() {
     if (!meetingId) return;
     setLoading(true);
     setError(null);
-    Promise.all([getMeetingResults(meetingId), listUsers()])
-      .then(([results, userList]) => {
-        setData(results);
-        setUsers(userList);
-        if (userList.length > 0) setReviewerId(userList[0]!.id);
-      })
+    getMeetingResults(meetingId)
+      .then(setData)
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load meeting results'))
       .finally(() => setLoading(false));
   }, [meetingId]);
@@ -440,21 +424,6 @@ export default function MeetingResults() {
       <h2 className="text-xl font-semibold text-slate-900">{data.meeting.title}</h2>
       <p className="text-sm text-slate-500">{data.meeting.meeting_date}</p>
 
-      <div className="mt-4">
-        <label className="block text-xs font-medium text-slate-500">Reviewing as</label>
-        <select
-          value={reviewerId}
-          onChange={(e) => setReviewerId(e.target.value)}
-          className="mt-1 rounded-md border border-slate-300 px-2 py-1 text-sm"
-        >
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.name} ({u.role})
-            </option>
-          ))}
-        </select>
-      </div>
-
       {data.meeting.summary && (
         <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Summary</h3>
@@ -472,7 +441,6 @@ export default function MeetingResults() {
           { key: 'due_date', label: 'Due', type: 'date' },
           { key: 'priority', label: 'Priority', type: 'select', options: ['low', 'medium', 'high', 'critical'] },
         ]}
-        reviewerId={reviewerId}
         onUpdated={(u) => updateCategory('actions', u)}
       />
 
@@ -488,7 +456,6 @@ export default function MeetingResults() {
           { key: 'severity', label: 'Severity', type: 'select', options: ['low', 'medium', 'high', 'critical'] },
           { key: 'mitigation', label: 'Mitigation', type: 'textarea' },
         ]}
-        reviewerId={reviewerId}
         onUpdated={(u) => updateCategory('risks', u)}
       />
 
@@ -502,7 +469,6 @@ export default function MeetingResults() {
           { key: 'severity', label: 'Severity', type: 'select', options: ['low', 'medium', 'high', 'critical'] },
           { key: 'resolution', label: 'Resolution', type: 'textarea' },
         ]}
-        reviewerId={reviewerId}
         onUpdated={(u) => updateCategory('issues', u)}
       />
 
@@ -516,7 +482,6 @@ export default function MeetingResults() {
           { key: 'decision_date', label: 'Date', type: 'date' },
           { key: 'impact', label: 'Impact', type: 'textarea' },
         ]}
-        reviewerId={reviewerId}
         onUpdated={(u) => updateCategory('decisions', u)}
       />
 
@@ -530,7 +495,6 @@ export default function MeetingResults() {
           { key: 'downstream_activity', label: 'Downstream', type: 'text' },
           { key: 'owner', label: 'Owner', type: 'text' },
         ]}
-        reviewerId={reviewerId}
         onUpdated={(u) => updateCategory('dependencies', u)}
       />
 
@@ -543,7 +507,6 @@ export default function MeetingResults() {
           { key: 'change_type', label: 'Type', type: 'select', options: ['scope', 'schedule', 'cost', 'resource', 'requirement'] },
           { key: 'potential_impact', label: 'Potential impact', type: 'textarea' },
         ]}
-        reviewerId={reviewerId}
         onUpdated={(u) => updateCategory('change_signals', u)}
       />
     </div>

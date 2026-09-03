@@ -2,18 +2,16 @@ import { Router } from 'express';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validateBody } from '../middleware/validateBody.js';
 import { createProjectSchema } from '../schemas/projects.js';
-import { ApiError } from '../lib/ApiError.js';
-import { requireId } from '../lib/requireId.js';
 import { config } from '../config.js';
 import { computeProjectAlerts } from '../lib/projectAlerts.js';
 import { computeSubHealth } from '../lib/projectHealth.js';
 import { getMostRecentMeetingDate } from '../lib/projectMeetings.js';
+import { loadProjectInOrg } from '../lib/orgAccess.js';
 import type { Action, ChangeSignal, Decision, Dependency, Issue, Risk } from '../db/types.js';
 import {
   createProject,
-  getProjectById,
   listActionsByProject,
-  listAllProjects,
+  listProjectsByOrganisation,
   listRisksByProject,
   listDecisionsByProject,
   listIssuesByProject,
@@ -95,10 +93,18 @@ function buildIntelligenceFeed(
   return items.sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, limit);
 }
 
+// GET / and POST / are scoped to the caller's own organisation
+// (req.user.organisationId, set by requireAuth) — never an unscoped list,
+// never a client-supplied org. Every /:id/* route below runs
+// loadProjectInOrg first, which 404s if the project doesn't exist *or*
+// belongs to a different org (see lib/orgAccess.ts) — the actual
+// authorization boundary for this app, since the backend's service-role
+// key bypasses RLS.
+
 projectsRouter.get(
   '/',
-  asyncHandler(async (_req, res) => {
-    res.json(await listAllProjects());
+  asyncHandler(async (req, res) => {
+    res.json(await listProjectsByOrganisation(req.user!.organisationId));
   }),
 );
 
@@ -106,78 +112,67 @@ projectsRouter.post(
   '/',
   validateBody(createProjectSchema),
   asyncHandler(async (req, res) => {
-    const project = await createProject(req.body);
+    const project = await createProject({
+      ...req.body,
+      organisation_id: req.user!.organisationId,
+    });
     res.status(201).json(project);
   }),
 );
 
 projectsRouter.get(
   '/:id',
+  loadProjectInOrg,
   asyncHandler(async (req, res) => {
-    const id = requireId(req.params.id);
-    const project = await getProjectById(id);
-    if (!project) throw new ApiError(404, 'Project not found');
-    res.json(project);
+    res.json(req.project);
   }),
 );
 
 projectsRouter.get(
   '/:id/actions',
+  loadProjectInOrg,
   asyncHandler(async (req, res) => {
-    const id = requireId(req.params.id);
-    const project = await getProjectById(id);
-    if (!project) throw new ApiError(404, 'Project not found');
-    res.json(await listActionsByProject(id));
+    res.json(await listActionsByProject(req.project!.id));
   }),
 );
 
 projectsRouter.get(
   '/:id/risks',
+  loadProjectInOrg,
   asyncHandler(async (req, res) => {
-    const id = requireId(req.params.id);
-    const project = await getProjectById(id);
-    if (!project) throw new ApiError(404, 'Project not found');
-    res.json(await listRisksByProject(id));
+    res.json(await listRisksByProject(req.project!.id));
   }),
 );
 
 projectsRouter.get(
   '/:id/decisions',
+  loadProjectInOrg,
   asyncHandler(async (req, res) => {
-    const id = requireId(req.params.id);
-    const project = await getProjectById(id);
-    if (!project) throw new ApiError(404, 'Project not found');
-    res.json(await listDecisionsByProject(id));
+    res.json(await listDecisionsByProject(req.project!.id));
   }),
 );
 
 projectsRouter.get(
   '/:id/issues',
+  loadProjectInOrg,
   asyncHandler(async (req, res) => {
-    const id = requireId(req.params.id);
-    const project = await getProjectById(id);
-    if (!project) throw new ApiError(404, 'Project not found');
-    res.json(await listIssuesByProject(id));
+    res.json(await listIssuesByProject(req.project!.id));
   }),
 );
 
 projectsRouter.get(
   '/:id/dependencies',
+  loadProjectInOrg,
   asyncHandler(async (req, res) => {
-    const id = requireId(req.params.id);
-    const project = await getProjectById(id);
-    if (!project) throw new ApiError(404, 'Project not found');
-    res.json(await listDependenciesByProject(id));
+    res.json(await listDependenciesByProject(req.project!.id));
   }),
 );
 
 projectsRouter.get(
   '/:id/change-signals',
+  loadProjectInOrg,
   asyncHandler(async (req, res) => {
-    const id = requireId(req.params.id);
-    const project = await getProjectById(id);
-    if (!project) throw new ApiError(404, 'Project not found');
-    res.json(await listChangeSignalsByProject(id));
+    res.json(await listChangeSignalsByProject(req.project!.id));
   }),
 );
 
@@ -187,20 +182,18 @@ projectsRouter.get(
 // dashboard summary shows. Also backs "source meeting" resolution.
 projectsRouter.get(
   '/:id/meetings',
+  loadProjectInOrg,
   asyncHandler(async (req, res) => {
-    const id = requireId(req.params.id);
-    const project = await getProjectById(id);
-    if (!project) throw new ApiError(404, 'Project not found');
-    res.json(await listMeetingsByProject(id));
+    res.json(await listMeetingsByProject(req.project!.id));
   }),
 );
 
 projectsRouter.get(
   '/:id/dashboard',
+  loadProjectInOrg,
   asyncHandler(async (req, res) => {
-    const id = requireId(req.params.id);
-    const project = await getProjectById(id);
-    if (!project) throw new ApiError(404, 'Project not found');
+    const project = req.project!;
+    const id = project.id;
 
     const [actions, risks, issues, decisions, dependencies, changeSignals, meetings] =
       await Promise.all([
@@ -294,10 +287,10 @@ projectsRouter.get(
 
 projectsRouter.get(
   '/:id/alerts',
+  loadProjectInOrg,
   asyncHandler(async (req, res) => {
-    const id = requireId(req.params.id);
-    const project = await getProjectById(id);
-    if (!project) throw new ApiError(404, 'Project not found');
+    const project = req.project!;
+    const id = project.id;
 
     const [actions, risks, decisions] = await Promise.all([
       listActionsByProject(id),
@@ -333,12 +326,9 @@ projectsRouter.get(
 
 projectsRouter.get(
   '/:id/reports',
+  loadProjectInOrg,
   asyncHandler(async (req, res) => {
-    const id = requireId(req.params.id);
-    const project = await getProjectById(id);
-    if (!project) throw new ApiError(404, 'Project not found');
-
-    const reports = await listWeeklyReportsByProject(id);
+    const reports = await listWeeklyReportsByProject(req.project!.id);
     res.json(reports);
   }),
 );

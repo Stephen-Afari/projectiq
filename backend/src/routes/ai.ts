@@ -6,9 +6,11 @@ import { ApiError } from '../lib/ApiError.js';
 import { computeProjectAlerts } from '../lib/projectAlerts.js';
 import { computeSubHealth } from '../lib/projectHealth.js';
 import { getMostRecentMeetingDate } from '../lib/projectMeetings.js';
+import { assertProjectAccess } from '../lib/orgAccess.js';
 import {
   createAction,
   createAgentRun,
+  createAuditLogEntry,
   createChangeSignal,
   createDecision,
   createDependency,
@@ -16,7 +18,6 @@ import {
   createRisk,
   createWeeklyReport,
   getMeetingById,
-  getProjectById,
   listActionsByMeeting,
   listActionsByProject,
   listRisksByMeeting,
@@ -52,6 +53,7 @@ aiRouter.post(
 
     const meeting = await getMeetingById(meeting_id);
     if (!meeting) throw new ApiError(404, 'Meeting not found');
+    await assertProjectAccess(meeting.project_id, req.user!.organisationId);
     if (!meeting.transcript_reference) {
       throw new ApiError(400, 'Meeting has no transcript to analyse');
     }
@@ -90,8 +92,7 @@ aiRouter.post(
       return;
     }
 
-    const project = await getProjectById(meeting.project_id);
-    if (!project) throw new ApiError(404, 'Project not found for this meeting');
+    const project = await assertProjectAccess(meeting.project_id, req.user!.organisationId);
 
     const transcript = await downloadTranscript(meeting.transcript_reference);
 
@@ -241,8 +242,7 @@ aiRouter.post(
   asyncHandler(async (req, res) => {
     const { project_id, week_start } = req.body;
 
-    const project = await getProjectById(project_id);
-    if (!project) throw new ApiError(404, 'Project not found');
+    const project = await assertProjectAccess(project_id, req.user!.organisationId);
 
     const weekEnd = new Date().toISOString();
     const weekStart = week_start ?? new Date(Date.now() - ONE_WEEK_MS).toISOString();
@@ -326,6 +326,15 @@ aiRouter.post(
       prompt_version: run.promptVersion,
     });
 
+    await createAuditLogEntry({
+      organisation_id: req.user!.organisationId,
+      actor_id: req.user!.id,
+      action: 'report_generated',
+      resource_type: 'weekly_reports',
+      resource_id: report.id,
+      after_state: { report_id: report.id, week_start: weekStart, week_end: weekEnd },
+    });
+
     res.status(201).json({
       report,
       project: { id: project.id, name: project.name },
@@ -339,8 +348,7 @@ aiRouter.post(
   asyncHandler(async (req, res) => {
     const { project_id, question } = req.body;
 
-    const project = await getProjectById(project_id);
-    if (!project) throw new ApiError(404, 'Project not found');
+    const project = await assertProjectAccess(project_id, req.user!.organisationId);
 
     const [actions, risks, issues, decisions, dependencies, changeSignals, meetings] =
       await Promise.all([
