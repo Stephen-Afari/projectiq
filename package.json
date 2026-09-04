@@ -18,7 +18,8 @@
     "db:verify": "node scripts/verify-schema.mjs",
     "seed": "npm run seed --workspace=backend",
     "setup:storage": "npm run setup:storage --workspace=backend",
-    "test:rls": "npm run test:rls --workspace=backend"
+    "test:rls": "npm run test:rls --workspace=backend",
+    "eval": "npm run eval --workspace=backend"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.18.0",

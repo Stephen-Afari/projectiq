@@ -1,0 +1,37 @@
+{
+  "actions": [
+    {
+      "keywords": ["variance"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 4: David Chen explicitly commits to preparing a variance report for steering committee"
+    },
+    {
+      "keywords": ["change order"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 5: Sarah Whitfield explicitly commits to sending the licensing change order"
+    }
+  ],
+  "risks": [
+    {
+      "keywords": ["burn rate"],
+      "confidence_type": "inference",
+      "note": "PM-approved checklist item 2: projected $250,000-$260,000 close is a forward projection, not a stated certainty"
+    }
+  ],
+  "issues": [
+    {
+      "keywords": ["invoiced"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 1: already over budget with exact figures stated aloud is a directly-stated, already-happened fact"
+    }
+  ],
+  "decisions": [],
+  "dependencies": [],
+  "change_signals": [
+    {
+      "keywords": ["licensing"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 3: unplanned licensing addition not in the original vendor quote is directly stated as new, unplanned scope/cost"
+    }
+  ]
+}

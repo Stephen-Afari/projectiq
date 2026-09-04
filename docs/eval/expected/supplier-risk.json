@@ -1,0 +1,31 @@
+{
+  "actions": [
+    {
+      "keywords": ["estimate"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 3: Tom Reyes explicitly commits to a revised delivery estimate by end of next week"
+    },
+    {
+      "keywords": ["procurement"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 4: David Chen explicitly commits to looping in procurement"
+    }
+  ],
+  "risks": [
+    {
+      "keywords": ["productive"],
+      "confidence_type": "inference",
+      "note": "PM-approved checklist item 2: replacements not being productive for weeks, threatening delivery schedule, is the model's own judgement of impact/severity — no exact delay is spoken aloud"
+    }
+  ],
+  "issues": [
+    {
+      "keywords": ["engineers"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 1: vendor lost two senior engineers this month (one resigned, one reassigned) is a directly-stated, already-happened fact"
+    }
+  ],
+  "decisions": [],
+  "dependencies": [],
+  "change_signals": []
+}

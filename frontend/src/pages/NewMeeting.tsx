@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, analyseMeeting, createMeeting, listProjects, type Project } from '../lib/api';
 import { ErrorBanner, InfoBanner } from '../components/ui/StatusBanner';
+import NewProjectForm from '../components/NewProjectForm';
 
 type Phase = 'idle' | 'saving' | 'analysing' | 'error';
 
@@ -14,6 +15,7 @@ export default function NewMeeting() {
   const [transcriptText, setTranscriptText] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [showNewProject, setShowNewProject] = useState(false);
 
   useEffect(() => {
     document.title = 'ProjectIQ · New Meeting';
@@ -67,18 +69,34 @@ export default function NewMeeting() {
   const inputClass =
     'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-60';
 
+  function handleProjectCreated(project: Project) {
+    setProjects((prev) => [...prev, project]);
+    setProjectId(project.id);
+    setShowNewProject(false);
+  }
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
-      <h2 className="text-xl font-semibold text-slate-900">New Meeting</h2>
+      <h2 className="text-xl font-semibold text-navy">New Meeting</h2>
       <p className="mt-1 text-sm text-slate-500">
         Capture a meeting transcript, link it to a project, and run AI analysis on it.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-5">
         <div>
-          <label className="block text-sm font-medium text-slate-700" htmlFor="project">
-            Project
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium text-slate-700" htmlFor="project">
+              Project
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowNewProject((v) => !v)}
+              disabled={fieldsDisabled}
+              className="text-xs font-medium text-cyan transition-colors hover:text-brand-700 disabled:opacity-60"
+            >
+              {showNewProject ? 'Cancel' : '+ New project'}
+            </button>
+          </div>
           <select
             id="project"
             value={projectId}
@@ -93,6 +111,12 @@ export default function NewMeeting() {
               </option>
             ))}
           </select>
+
+          {showNewProject && (
+            <div className="mt-3">
+              <NewProjectForm onCreated={handleProjectCreated} onCancel={() => setShowNewProject(false)} />
+            </div>
+          )}
         </div>
 
         <div>
@@ -162,7 +186,7 @@ export default function NewMeeting() {
         <button
           type="submit"
           disabled={!canSubmit}
-          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
+          className="rounded-md bg-cyan px-4 py-2 text-sm font-semibold text-navy transition-colors hover:bg-brand-600 hover:text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:hover:bg-slate-300 disabled:hover:text-slate-500"
         >
           {phase === 'saving'
             ? 'Saving…'

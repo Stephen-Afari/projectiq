@@ -1,0 +1,29 @@
+ERP Transformation Programme — Finance & Budget Review
+Attendees: Priya Nair (PM), David Chen (Finance Lead), Sarah Whitfield (Procurement Manager)
+
+David Chen: I want to flag the integration workstream spend. We
+budgeted $180,000 for the middleware and connector build. We've
+invoiced $210,000 against it so far, and the work isn't finished.
+
+Priya Nair: So we're already over budget on a workstream that isn't
+even done.
+
+David Chen: Correct. If the current burn rate continues, I'd expect the
+integration line to close somewhere around $250,000 to $260,000 against
+the $180,000 budget.
+
+Sarah Whitfield: Some of that is the extra middleware licensing we
+added in month two — that wasn't in the original vendor quote, it came
+up after we discovered the legacy system needed an extra adapter.
+
+Priya Nair: Right, I remember that addition. This should go in front of
+the steering committee rather than surface later. David, can you
+prepare a variance report for next week's steering committee meeting?
+
+David Chen: Yes, I'll have the variance report ready by then.
+
+Sarah Whitfield: I'll also send over the licensing change order so the
+committee can see exactly what drove the extra cost.
+
+Priya Nair: Thanks both. Let's make sure this doesn't come as a
+surprise to anyone.

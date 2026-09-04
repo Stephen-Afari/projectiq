@@ -1,0 +1,20 @@
+ERP Transformation Programme — Steering Committee
+Attendees: Priya Nair (PM), David Chen (Finance Lead), Michael Osei (IT Lead), Sarah Whitfield (Procurement Manager)
+
+Priya Nair: Today we need to settle the go-live approach. Two options:
+big-bang across finance, procurement, and production planning all at
+once, or phased, starting with finance.
+
+David Chen: Finance is also furthest along in UAT, so starting there
+makes sense.
+
+Priya Nair: Agreed. I'm deciding we go with a phased go-live: finance
+module first, then procurement, then production planning.
+
+David Chen: Agreed.
+
+Michael Osei: Agreed.
+
+Sarah Whitfield: Agreed.
+
+Priya Nair: Good, it's settled — phased, finance first.

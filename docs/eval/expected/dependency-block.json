@@ -1,0 +1,20 @@
+{
+  "actions": [
+    {
+      "keywords": ["workflow"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 2: Sarah's team explicitly commits to starting the independent workflow/approval-routing setup now"
+    }
+  ],
+  "risks": [],
+  "issues": [],
+  "decisions": [],
+  "dependencies": [
+    {
+      "keywords": ["migration"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 1: production planning configuration explicitly stated as blocked on finance's data migration completing first"
+    }
+  ],
+  "change_signals": []
+}

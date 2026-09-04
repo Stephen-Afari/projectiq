@@ -103,7 +103,7 @@ function SubHealthCard({ label, level }: { label: string; level: HealthLevel }) 
 function StatCell({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 text-center shadow-sm">
-      <p className="text-2xl font-semibold text-slate-900">{value}</p>
+      <p className="text-2xl font-semibold text-navy">{value}</p>
       <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
     </div>
   );
@@ -341,7 +341,7 @@ export default function ProjectDashboard() {
         className={`rounded-lg border border-l-4 bg-white p-5 shadow-sm ${HEALTH_BORDER[data.project.health]} flex flex-col justify-between gap-4 sm:flex-row sm:items-center`}
       >
         <div>
-          <h2 className="text-xl font-semibold text-slate-900 sm:text-2xl">{data.project.name}</h2>
+          <h2 className="text-xl font-semibold text-navy sm:text-2xl">{data.project.name}</h2>
           <p className="mt-1 text-sm text-slate-500">
             {data.project.status} · {data.project.start_date ?? '?'} → {data.project.target_date ?? '?'}
           </p>

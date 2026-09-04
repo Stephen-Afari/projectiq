@@ -103,7 +103,7 @@ function RecordCard({ item, config, meeting }: { item: EntityRecord; config: Typ
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-medium text-slate-900">{String(item[config.titleField] ?? '')}</p>
+        <p className="text-sm font-medium text-navy">{String(item[config.titleField] ?? '')}</p>
         <div className="flex shrink-0 items-center gap-1.5">
           <ConfidenceBadge type={item.confidence_type} />
           <StatusBadge status={item.approval_status} />
@@ -258,7 +258,7 @@ export default function ProjectRecords() {
       <Link to={`/projects/${id}`} className="text-sm text-slate-500 transition-colors hover:text-brand-700">
         ← Back to dashboard
       </Link>
-      <h2 className="mt-2 text-xl font-semibold text-slate-900">{config.label}</h2>
+      <h2 className="mt-2 text-xl font-semibold text-navy">{config.label}</h2>
 
       {!loading && !error && (
         <div className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">

@@ -1,0 +1,26 @@
+{
+  "actions": [
+    {
+      "keywords": ["escalate"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 1: Michael Osei explicitly assigned to escalate the UAT sandbox ticket, due Friday"
+    }
+  ],
+  "risks": [
+    {
+      "keywords": ["go-live"],
+      "confidence_type": "inference",
+      "note": "PM-approved checklist item 3: sandbox delay bleeding into the go-live freeze is a stated possible effect; severity/probability is the model's own judgement, not spoken aloud"
+    }
+  ],
+  "issues": [
+    {
+      "keywords": ["sandbox"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 2: UAT sandbox not provisioned after 12 days is an already-existing, directly-stated problem"
+    }
+  ],
+  "decisions": [],
+  "dependencies": [],
+  "change_signals": []
+}

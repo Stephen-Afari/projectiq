@@ -7,15 +7,16 @@ import ProjectDashboard from './pages/ProjectDashboard';
 import ProjectRecords from './pages/ProjectRecords';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './lib/authContext';
+import { Logo } from './components/ui/Logo';
 
-function Wordmark() {
+function Footer() {
   return (
-    <Link to="/" className="flex items-center gap-2">
-      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-600 text-sm font-bold text-white">
-        P
-      </span>
-      <span className="text-lg font-semibold text-slate-900">ProjectIQ</span>
-    </Link>
+    <footer className="border-t border-slate-200 bg-white px-4 py-4 text-center sm:px-6">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-600">
+        Intelligence · Automation · Excellence
+      </p>
+      <p className="mt-1 text-xs text-slate-400">© 2026 ProjectIQ</p>
+    </footer>
   );
 }
 
@@ -34,29 +35,35 @@ function AuthedApp() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="flex min-h-screen flex-col bg-neutral">
         <header className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
-          <Wordmark />
+          <Link to="/">
+            <Logo />
+          </Link>
         </header>
-        <main>
+        <main className="flex-1">
           <Login />
         </main>
+        <Footer />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-neutral">
       <header className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex items-center justify-between">
-          <Wordmark />
+          <Link to="/" className="flex items-center">
+            <Logo className="hidden sm:block" />
+            <Logo mark className="sm:hidden" />
+          </Link>
 
           {/* Full nav row from sm upward */}
-          <nav className="hidden items-center gap-4 text-sm font-medium text-slate-600 sm:flex">
-            <Link to="/" className="transition-colors hover:text-brand-600">
+          <nav className="hidden items-center gap-4 text-sm font-medium sm:flex">
+            <Link to="/" className="text-cyan transition-colors hover:text-brand-700">
               New Meeting
             </Link>
-            <Link to="/projects" className="transition-colors hover:text-brand-600">
+            <Link to="/projects" className="text-cyan transition-colors hover:text-brand-700">
               Projects
             </Link>
             <span className="text-slate-300">|</span>
@@ -88,11 +95,11 @@ function AuthedApp() {
 
         {/* Collapsed nav panel below sm */}
         {menuOpen && (
-          <nav className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 text-sm font-medium text-slate-600 sm:hidden">
-            <Link to="/" onClick={() => setMenuOpen(false)} className="py-1">
+          <nav className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 text-sm font-medium sm:hidden">
+            <Link to="/" onClick={() => setMenuOpen(false)} className="py-1 text-cyan">
               New Meeting
             </Link>
-            <Link to="/projects" onClick={() => setMenuOpen(false)} className="py-1">
+            <Link to="/projects" onClick={() => setMenuOpen(false)} className="py-1 text-cyan">
               Projects
             </Link>
             <span className="py-1 text-xs text-slate-400">{session.user.email}</span>
@@ -105,7 +112,7 @@ function AuthedApp() {
           </nav>
         )}
       </header>
-      <main>
+      <main className="flex-1">
         <Routes>
           <Route path="/" element={<NewMeeting />} />
           <Route path="/meetings/:meetingId/results" element={<MeetingResults />} />
@@ -114,6 +121,7 @@ function AuthedApp() {
           <Route path="/projects/:id/:type" element={<ProjectRecords />} />
         </Routes>
       </main>
+      <Footer />
     </div>
   );
 }

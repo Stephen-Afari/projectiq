@@ -1,0 +1,32 @@
+[
+  {
+    "question": "Who is responsible for escalating the UAT sandbox delay?",
+    "expect_data_gap": false,
+    "expected_answer_keywords": ["Michael"],
+    "expected_citation_ref": "action-schedule-delay-0"
+  },
+  {
+    "question": "What did the steering committee decide about the go-live approach?",
+    "expect_data_gap": false,
+    "expected_answer_keywords": ["phased"],
+    "expected_citation_ref": "decision-formal-decision-0"
+  },
+  {
+    "question": "Which workstream is currently over budget?",
+    "expect_data_gap": false,
+    "expected_answer_keywords": ["integration"],
+    "expected_citation_ref": "issue-budget-overrun-0"
+  },
+  {
+    "question": "What blocking dependency is the production planning module facing?",
+    "expect_data_gap": false,
+    "expected_answer_keywords": ["migration"],
+    "expected_citation_ref": "dependency-dependency-block-0"
+  },
+  {
+    "question": "How many total story points remain in the production planning backlog?",
+    "expect_data_gap": true,
+    "expected_answer_keywords": [],
+    "expected_citation_ref": null
+  }
+]

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/authContext';
 import { ErrorBanner } from '../components/ui/StatusBanner';
+import { Logo } from '../components/ui/Logo';
 
 export default function Login() {
   const { signIn } = useAuth();
@@ -27,7 +28,8 @@ export default function Login() {
 
   return (
     <div className="mx-auto flex min-h-[80vh] max-w-sm flex-col justify-center px-4 sm:px-6">
-      <h2 className="text-xl font-semibold text-slate-900">Sign in to ProjectIQ</h2>
+      <Logo className="mb-6 self-start" height={36} />
+      <h2 className="text-xl font-semibold text-navy">Sign in to ProjectIQ</h2>
       <p className="mt-1 text-sm text-slate-500">Use your organisation's ProjectIQ account.</p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -65,7 +67,7 @@ export default function Login() {
         <button
           type="submit"
           disabled={submitting || !email || !password}
-          className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
+          className="w-full rounded-md bg-cyan px-4 py-2 text-sm font-semibold text-navy transition-colors hover:bg-brand-600 hover:text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:hover:bg-slate-300 disabled:hover:text-slate-500"
         >
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>

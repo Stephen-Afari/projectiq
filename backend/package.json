@@ -11,6 +11,7 @@
     "seed": "tsx scripts/seed.ts",
     "setup:storage": "tsx scripts/setup-storage.ts",
     "test:rls": "tsx scripts/test-rls-isolation.ts",
+    "eval": "tsx scripts/eval.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

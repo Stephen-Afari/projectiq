@@ -1,0 +1,20 @@
+{
+  "actions": [
+    {
+      "keywords": ["change request"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 2: David explicitly commits to drafting the change request by Wednesday"
+    }
+  ],
+  "risks": [],
+  "issues": [],
+  "decisions": [],
+  "dependencies": [],
+  "change_signals": [
+    {
+      "keywords": ["regulat"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 1: new regulatory reporting requirement, outside the original baselined scope, is directly and explicitly stated (stem 'regulat' matches both 'regulatory' and 'regulation' wording)"
+    }
+  ]
+}

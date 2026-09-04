@@ -1,0 +1,34 @@
+ERP Transformation Programme — Vendor Sync
+Attendees: Priya Nair (PM), Tom Reyes (Vendor PM, Integration Partner), David Chen (Finance Lead)
+
+Priya Nair: Tom, good to have you. How's the integration workstream
+looking on your side?
+
+Tom Reyes: I need to flag something. We lost two of our senior
+integration engineers this month — one resigned, one got pulled onto
+another client's emergency project by our leadership.
+
+Priya Nair: That's the middleware team, right? The one building the
+connector between the legacy MRP and the new ERP?
+
+Tom Reyes: Correct. Their replacements are still being onboarded
+internally and won't be productive on ProjectIQ's integration work for
+at least a few more weeks.
+
+Priya Nair: How much does this actually push out the connector
+delivery?
+
+Tom Reyes: I can't give you an exact number yet — I'm still working
+that out with my resourcing lead. Realistically I don't expect it to be
+a small slip.
+
+Priya Nair: Understood. Tom, can you get me a revised delivery estimate
+by end of next week once you've confirmed the replacement engineers'
+ramp-up timeline?
+
+Tom Reyes: Yes, I'll have that to you by then.
+
+Priya Nair: Appreciated. David, can you loop in procurement so they're
+aware this vendor may need a schedule conversation soon?
+
+David Chen: Will do.

@@ -1,0 +1,14 @@
+{
+  "actions": [],
+  "risks": [],
+  "issues": [],
+  "decisions": [
+    {
+      "keywords": ["phased"],
+      "confidence_type": "fact",
+      "note": "PM-approved checklist item 1: Priya explicitly states the group's decision to go phased, finance first — a verbatim decision statement"
+    }
+  ],
+  "dependencies": [],
+  "change_signals": []
+}

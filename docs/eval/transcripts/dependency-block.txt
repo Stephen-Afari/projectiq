@@ -1,0 +1,18 @@
+ERP Transformation Programme — Cross-Workstream Planning
+Attendees: Priya Nair (PM), Sarah Whitfield (Procurement Manager)
+
+Priya Nair: Sarah, how's the production planning module configuration
+coming along?
+
+Sarah Whitfield: We're mostly ready to start, but there's a blocker.
+Production planning configuration can't proceed until finance's data
+migration — the material master and BOM data — is complete. We'd be
+configuring against dummy data otherwise.
+
+Priya Nair: Understood. Is there any part of the configuration that
+doesn't depend on that data and could start now?
+
+Sarah Whitfield: Yes — the workflow and approval-routing setup is
+independent. My team can start on that now.
+
+Priya Nair: Good, let's do that so we're not fully idle.

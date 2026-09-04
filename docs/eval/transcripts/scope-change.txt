@@ -1,0 +1,19 @@
+ERP Transformation Programme — Finance Module Working Session
+Attendees: Priya Nair (PM), David Chen (Finance Lead)
+
+David Chen: I need to raise something that came up this week. Legal
+told us yesterday that a new regulatory reporting requirement takes
+effect next quarter — we now need to produce a quarterly supplier
+payment transparency report in a specific government-mandated format.
+
+Priya Nair: Was that in our original requirements?
+
+David Chen: No — the regulation was only finalised last month, after
+we'd already baselined the finance module scope.
+
+Priya Nair: Understood, that's genuinely new scope then. Can you have a
+change request ready for me to review by Wednesday?
+
+David Chen: Yes, I'll have it to you by Wednesday.
+
+Priya Nair: Thanks, David.

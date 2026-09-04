@@ -644,41 +644,69 @@ Conventions), added 2026-09-07 — see
   3-then-2 and nothing is ever stranded alone in its own row at any
   breakpoint.
 - **Design system** (`frontend/tailwind.config.js`,
-  `frontend/src/components/ui/`) — added in the 2026-09-08 design-polish
-  pass (see `docs/decision-log/2026-09-08-design-polish-pass.md`), the
-  first centralized token/primitive layer in the frontend:
-  - `tailwind.config.js` defines `theme.extend.colors.brand` (aliases
-    Tailwind's own `indigo` scale via `tailwindcss/colors` — no
-    hand-picked hex values) for primary buttons, links, active/focus
-    state, and the header wordmark, plus `theme.extend.fontFamily.sans`
-    (Inter, loaded via a Google Fonts `<link>` in `index.html`, applied
-    app-wide by `font-sans antialiased` on `body` in `index.css` — no new
-    npm font dependency). The existing semantic palette — slate
-    (neutral/pending), green (approved/fact/health-good), amber
-    (inference/warning/duplicate/health-warning), red (rejected/critical/
-    health-bad/errors), blue (recommendation/info), purple (Impact
-    Analyst/document citations), orange (high severity) — is deliberately
-    untouched; `brand` is additive, not a re-theming, since these colors
-    encode the approval-gate and confidence-type meaning that must stay
-    obvious.
+  `frontend/src/components/ui/`) — the token/primitive layer added in the
+  2026-09-08 design-polish pass, re-skinned with the real approved
+  ProjectIQ brand in the 2026-09-10 pass (see
+  `docs/decision-log/2026-09-10-brand-system-finalized.md`; the
+  2026-09-08/09 entries describe an earlier indigo/Inter placeholder that
+  no longer reflects the shipped palette):
+  - `tailwind.config.js` defines `theme.extend.colors.brand` (a Bright
+    Cyan `#00B6D1` ramp, 50..950) plus flat named tokens `navy`
+    (`#0D1B3D`), `cyan` (`#00B6D1`, same hue as `brand-500`), `mint`
+    (`#C6F3E6`), `coral` (`#FF7A59`), and `neutral` (`#F2F4F7` —
+    intentionally overrides Tailwind's built-in `neutral` grey ramp with
+    this one flat shade; confirmed no `neutral-*` ramp classes were in
+    use anywhere in the frontend before this change). `white` needs no
+    token — Tailwind's built-in `white` already resolves to `#FFFFFF`.
+    `theme.extend.fontFamily.sans` is Manrope (Google Fonts `<link>` in
+    `index.html`, Arial/system fallback chain) — no new npm font
+    dependency. `frontend/src/index.css`'s `@layer base` applies
+    `bg-neutral text-navy font-sans antialiased` to `html`/`body` and
+    `font-bold text-navy` to every heading tag, so every screen inherits
+    the brand surface/text colors by default rather than each page
+    re-applying them. The pre-existing semantic palette — slate
+    (neutral/pending), green (approved/health-good), amber (health-
+    warning/duplicate flags), red (rejected/critical/health-bad/errors),
+    blue (info/processing), purple (Impact Analyst/document citations),
+    orange (high severity) — is unchanged for approval-status, health,
+    and severity meaning. **FACT/INFERENCE/RECOMMENDATION confidence
+    chips are the one exception**: they map to navy/cyan/coral (not
+    green/amber/blue) per the brand system — see `CONFIDENCE_TONE` below.
   - `components/ui/Badge.tsx` is the single source of truth for badge
-    styling (shell + `BadgeTone` map), replacing what had drifted into
-    five independently-duplicated color-key maps across
-    `ProjectDashboard`/`MeetingResults`/`AskProjectIQ`/`DocumentUpload`/
-    `ProjectRecords`. Exports the shell (`Badge`) plus convenience
-    wrappers (`ConfidenceBadge`, `HealthBadge`, `SeverityBadge`,
-    `StatusBadge`) and the tone maps themselves
+    styling (shell + `BadgeTone` map — now including `navy`/`cyan`/
+    `coral` alongside the original green/amber/orange/red/blue/purple/
+    slate), replacing what had drifted into five independently-
+    duplicated color-key maps across `ProjectDashboard`/`MeetingResults`/
+    `AskProjectIQ`/`DocumentUpload`/`ProjectRecords`. Exports the shell
+    (`Badge`) plus convenience wrappers (`ConfidenceBadge`, `HealthBadge`,
+    `SeverityBadge`, `StatusBadge`) and the tone maps themselves
     (`CONFIDENCE_TONE`/`HEALTH_TONE`/`SEVERITY_TONE`/`APPROVAL_TONE`/
     `INGESTION_TONE`) for call sites that need the tone directly (e.g. a
-    citation-legend loop). `components/ui/Card.tsx` (`Card` shell +
-    `CardTitle`, with optional `linkTo`/`icon`) replaces the repeated
-    `rounded-lg border border-slate-200 bg-white p-4 shadow-sm` markup.
-    `components/ui/StatusBanner.tsx` (`ErrorBanner` with optional
-    `onRetry`, `InfoBanner`) replaces the ad hoc red-error-box and blue/
-    amber info-banner patterns that had been hand-rolled per screen. All
-    screens/components under Frontend Conventions now consume these
-    rather than defining their own — a new badge/card/banner need is
-    added here, not re-invented at the call site.
+    citation-legend loop). `CONFIDENCE_TONE` is `{ fact: 'navy',
+    inference: 'cyan', recommendation: 'coral' }` — every consumer
+    (`ConfidenceBadge`, `AskProjectIQ.tsx`'s citation pills,
+    `MeetingResults.tsx`'s legend) reads this one map, so the brand
+    colors are consistent everywhere a confidence chip appears.
+    `HEALTH_TONE`/`SEVERITY_TONE`/`APPROVAL_TONE`/`INGESTION_TONE` are
+    untouched. `components/ui/Card.tsx` (`Card` shell + `CardTitle`, with
+    optional `linkTo`/`icon`) replaces the repeated `rounded-lg border
+    border-slate-200 bg-white p-4 shadow-sm` markup. `components/ui/
+    StatusBanner.tsx` (`ErrorBanner` with optional `onRetry`,
+    `InfoBanner`) replaces the ad hoc red-error-box and blue/amber
+    info-banner patterns that had been hand-rolled per screen.
+    `components/ui/Logo.tsx` wraps the three approved raster assets
+    (`src/assets/projectiq-logo.png` for light backgrounds,
+    `projectiq-logo-reversed.png` for dark surfaces via an `onDark` prop,
+    `projectiq-mark.png` for compact contexts via a `mark` prop) —
+    height-constrained, width auto, never stretched or recolored; used in
+    `App.tsx`'s header/nav and above the sign-in card in `Login.tsx`.
+    Primary buttons and active nav links use `bg-cyan text-navy`
+    (hovering to `bg-brand-600 text-white`) rather than the `brand-600`
+    ramp shade alone, matching the brand guide's literal "cyan
+    background, navy/white text." All screens/components under Frontend
+    Conventions now consume these primitives rather than defining their
+    own — a new badge/card/banner/logo need is added here, not
+    re-invented at the call site.
   - Small glyphs (Dashboard card-title icons, the AI Assistant's entity-
     citation link icon) are hand-authored inline SVGs, not an icon
     library — consistent with the no-speculative-dependency rule; add a

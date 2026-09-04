@@ -8,7 +8,17 @@
  * re-theming of what green/amber/red/etc. mean.
  */
 
-export type BadgeTone = 'green' | 'amber' | 'orange' | 'red' | 'blue' | 'purple' | 'slate';
+export type BadgeTone =
+  | 'green'
+  | 'amber'
+  | 'orange'
+  | 'red'
+  | 'blue'
+  | 'purple'
+  | 'slate'
+  | 'navy'
+  | 'cyan'
+  | 'coral';
 
 const TONE_STYLES: Record<BadgeTone, string> = {
   green: 'bg-green-100 text-green-800 border-green-300',
@@ -18,6 +28,13 @@ const TONE_STYLES: Record<BadgeTone, string> = {
   blue: 'bg-blue-100 text-blue-800 border-blue-300',
   purple: 'bg-purple-100 text-purple-800 border-purple-300',
   slate: 'bg-slate-100 text-slate-600 border-slate-300',
+  // Brand-token tones (navy/cyan/coral) — used for FACT/INFERENCE/
+  // RECOMMENDATION confidence chips only, per the ProjectIQ brand system.
+  // `cyan` reuses the `brand` ramp's 100/700/300 shades for solid text
+  // contrast rather than resting text on the single flat `cyan` hex.
+  navy: 'bg-navy/10 text-navy border-navy/30',
+  cyan: 'bg-brand-100 text-brand-700 border-brand-300',
+  coral: 'bg-coral/10 text-coral border-coral/30',
 };
 
 export function Badge({ text, tone, className = '' }: { text: string; tone: BadgeTone; className?: string }) {
@@ -33,10 +50,14 @@ export function Badge({ text, tone, className = '' }: { text: string; tone: Badg
 // --- Domain tone maps (colocated — these are the "five slightly different
 // color-key maps" the audit found, now defined exactly once each) ---
 
+// FACT/INFERENCE/RECOMMENDATION → navy/cyan/coral per the ProjectIQ brand
+// system (2026-09-10). RAG health (HEALTH_TONE) and approval status
+// (APPROVAL_TONE) keep the original green/amber/red/slate semantics —
+// this recolor is scoped to confidence-type chips only.
 export const CONFIDENCE_TONE: Record<'fact' | 'inference' | 'recommendation', BadgeTone> = {
-  fact: 'green',
-  inference: 'amber',
-  recommendation: 'blue',
+  fact: 'navy',
+  inference: 'cyan',
+  recommendation: 'coral',
 };
 
 export const HEALTH_TONE: Record<'green' | 'amber' | 'red', BadgeTone> = {

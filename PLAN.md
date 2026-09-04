@@ -78,6 +78,65 @@ behavior:
 - **Consistency sweep**: transitions on interactive elements, per-page
   `document.title`, and warmer empty-state copy across every screen.
 
+## Evaluation
+
+The Phase 6 test suite (`backend/tests/`) is deterministic and mocks
+the LLM entirely — it proves the code around the model behaves
+correctly, not whether the model itself extracts the right things. A
+separate, real-API evaluation harness (`npm run eval`,
+`backend/scripts/eval.ts`) was built and run against a 7-transcript
+golden set (`docs/eval/`) to actually measure AI output quality before
+calling this shippable. See `docs/eval/reports/2026-09-04-eval-run.md`
+for full detail.
+
+**The golden set's expected results are PM-authored and PM-verified,
+not model-generated** — this matters for credibility, since the same
+session that built the pipeline also runs this evaluation. For each of
+the 7 transcripts, a checklist of exactly what should be extracted
+(with FACT/INFERENCE/RECOMMENDATION labels) was proposed and approved
+by the PM *before* the corresponding transcript existed; only then was
+a transcript engineered to embed exactly those items and confirmed by
+the PM as matching; only then was the approved checklist itself written
+as that transcript's expected-results file. A model grading its own
+extraction against an answer key it also invented would measure
+self-consistency, not correctness — this process avoids that.
+
+**First pass identified three real patterns** (action/decision
+duplication, over-eager dependency extraction, inconsistent
+change_signal labeling) via manual audit — full detail and the specific
+proposed prompt edits are in the eval report. All three were applied
+to `backend/src/agents/meeting-analyst/prompt.ts`
+(`PROMPT_VERSION` → `meeting-analyst-v4`, after one refinement — see
+below) and the eval was re-run to confirm the effect, rather than
+trusting the fix without measuring it again.
+
+- **Recall: 17/18 golden-set items found (94%)** — one risk item was
+  missed by the harness's exact-keyword match, though the model
+  extracted the same underlying claim, just re-categorized under
+  `issues` with different wording that no longer contained the golden
+  set's matching keyword. Confirmed as a golden-set matching artifact,
+  not a pipeline miss — flagged for a future golden-set revision
+  (broadening that one keyword) rather than adjusted after the fact.
+- **Label accuracy: 100%** on every matched item, across both the
+  pre-fix and final post-fix runs.
+- **Zero hallucination on the false-positive trap**, PM-confirmed,
+  across every run.
+- **Assistant grounding: 5/5**, unaffected by the prompt changes (the
+  Project Assistant is a separate agent).
+- **Guardrails: PASS** on all 26 real API calls in every run —
+  auto-approval is structurally impossible, and the Impact Analyst's
+  confidence type stayed schema-locked to `inference` throughout.
+- **Measured, not assumed, prompt-fix impact**: `dependencies` false
+  positives roughly halved (6→3) and `decisions` false positives
+  dropped (5→3, with one transcript's duplicate decisions eliminated
+  entirely) after applying the fixes. The change_signal labeling fix
+  **initially regressed** — a stated fact got mislabeled inference,
+  caught by re-running the eval rather than assumed fixed — traced to
+  overly-broad wording, refined, and re-run again to confirm label
+  accuracy returned to 100% with no new regressions. This back-and-forth
+  is itself the point of having a repeatable harness: a prompt change
+  that isn't re-measured is a guess, not a fix.
+
 ## Future Roadmap
 
 - **Phase 9 integrations**: replace the Approval Hand-off event's

@@ -1,0 +1,24 @@
+ERP Transformation Programme — Weekly Status Check-in
+Attendees: Priya Nair (PM), David Chen (Finance Lead), Michael Osei (IT Lead), Sarah Whitfield (Procurement Manager)
+
+Priya Nair: Quick one this week, let's go round the table. David, finance?
+
+David Chen: All green. UAT is progressing on schedule, no blockers to
+report this week.
+
+Priya Nair: Great. Michael, IT infrastructure?
+
+Michael Osei: Also green. The staging environment upgrade we did last
+week is holding up fine, no issues since.
+
+Priya Nair: Good to hear. Sarah, procurement?
+
+Sarah Whitfield: On track. The vendor workflow configuration is about
+where we expected it to be at this point in the plan.
+
+Priya Nair: Excellent, sounds like a quiet week across the board.
+
+David Chen: It has been, yeah.
+
+Priya Nair: Let's keep it that way. Same time next week — thanks
+everyone, short and sweet today.

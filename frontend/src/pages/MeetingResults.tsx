@@ -172,7 +172,7 @@ function EditForm({
       <div className="flex gap-2 pt-1">
         <button
           type="submit"
-          className="rounded bg-brand-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-brand-700"
+          className="rounded bg-cyan px-3 py-1 text-xs font-semibold text-navy transition-colors hover:bg-brand-600 hover:text-white"
         >
           Save
         </button>
@@ -244,7 +244,7 @@ function ItemCard({
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-medium text-slate-900">{String(item[titleField] ?? '')}</p>
+        <p className="text-sm font-medium text-navy">{String(item[titleField] ?? '')}</p>
         <div className="flex shrink-0 items-center gap-1.5">
           <ConfidenceBadge type={item.confidence_type} />
           <StatusBadge status={item.approval_status} />
@@ -467,7 +467,7 @@ export default function MeetingResults() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
-      <h2 className="text-xl font-semibold text-slate-900">{data.meeting.title}</h2>
+      <h2 className="text-xl font-semibold text-navy">{data.meeting.title}</h2>
       <p className="text-sm text-slate-500">{data.meeting.meeting_date}</p>
 
       {data.meeting.summary && (
@@ -484,7 +484,7 @@ export default function MeetingResults() {
           color alone. */}
       <div className="mt-6 grid grid-cols-3 gap-3">
         <div className="rounded-lg border border-slate-200 bg-white p-3 text-center shadow-sm">
-          <p className="text-xl font-semibold text-slate-900">{summary.total}</p>
+          <p className="text-xl font-semibold text-navy">{summary.total}</p>
           <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">Extracted</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-3 text-center shadow-sm">

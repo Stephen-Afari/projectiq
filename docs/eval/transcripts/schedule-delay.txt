@@ -1,0 +1,33 @@
+ERP Transformation Programme — Finance Workstream Check-in
+Attendees: Priya Nair (PM), David Chen (Finance Lead), Michael Osei (IT Lead)
+
+Priya Nair: Let's start with finance UAT. David, where are we?
+
+David Chen: Not great, honestly. The UAT sandbox environment still isn't
+up. My team submitted the provisioning ticket to IT twelve days ago and
+it's still sitting in the queue.
+
+Michael Osei: Yeah, I checked this morning — it's stuck behind two
+infrastructure tickets that got prioritised over it. I didn't realise it
+had been that long.
+
+Priya Nair: Twelve days is a long time. What happens if it slips
+further?
+
+David Chen: My testers are idle right now, but the bigger concern is
+that if this drags on, we could end up running UAT right into the
+go-live change freeze window.
+
+Priya Nair: Understood. Michael, can you personally escalate the
+provisioning ticket and get it bumped to the top of the queue? I'd like
+it resolved by Friday.
+
+Michael Osei: I'll escalate it today and chase it directly with the
+infra team. Friday's tight but I'll push for it.
+
+Priya Nair: Great, thank you. Anything else on finance this week?
+
+David Chen: No, that's the main blocker. Everything else is tracking
+fine.
+
+Priya Nair: Good. Let's regroup Friday afternoon on the sandbox status.

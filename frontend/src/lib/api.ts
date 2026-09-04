@@ -1,6 +1,13 @@
+export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed' | 'cancelled';
+
 export interface Project {
   id: string;
   name: string;
+  description?: string | null;
+  status?: ProjectStatus;
+  health?: HealthLevel;
+  start_date?: string | null;
+  target_date?: string | null;
 }
 
 export type HealthLevel = 'green' | 'amber' | 'red';
@@ -207,6 +214,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function listProjects(): Promise<Project[]> {
   return request<Project[]>('/projects');
+}
+
+export interface CreateProjectInput {
+  name: string;
+  description?: string;
+  status?: ProjectStatus;
+  health?: HealthLevel;
+  start_date?: string;
+  target_date?: string;
+}
+
+export function createProject(input: CreateProjectInput): Promise<Project> {
+  return request<Project>('/projects', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export function listUsers(): Promise<User[]> {
